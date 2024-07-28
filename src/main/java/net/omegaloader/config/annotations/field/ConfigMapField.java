@@ -1,4 +1,4 @@
-package net.omegaloader.config.annotations.fields;
+package net.omegaloader.config.annotations.field;
 
 import java.lang.annotation.*;
 

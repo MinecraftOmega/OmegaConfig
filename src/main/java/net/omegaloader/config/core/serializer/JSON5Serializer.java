@@ -1,4 +1,4 @@
-package net.omegaloader.config.formats.serializers;
+package net.omegaloader.config.core.serializer;
 
 public class JSON5Serializer {
 

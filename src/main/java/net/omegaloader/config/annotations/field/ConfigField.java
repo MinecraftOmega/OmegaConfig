@@ -1,4 +1,4 @@
-package net.omegaloader.config.annotations.fields;
+package net.omegaloader.config.annotations.field;
 
 public @interface ConfigField {
     String name() default "";

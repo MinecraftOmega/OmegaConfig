@@ -1,4 +1,4 @@
-package net.omegaloader.config.builder.fields;
+package net.omegaloader.config.builder.field;
 
 public class ByteField extends BaseConfigField<Byte> {
     @Override

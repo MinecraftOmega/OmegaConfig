@@ -1,4 +1,4 @@
-package net.omegaloader.config.builder.fields;
+package net.omegaloader.config.builder.field;
 
 public class EnumField<T extends Enum<T>> extends BaseConfigField<T> {
     @Override
