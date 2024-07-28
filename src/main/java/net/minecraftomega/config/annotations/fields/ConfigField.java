@@ -5,4 +5,7 @@ import net.minecraftomega.config.builder.fields.BaseConfigField;
 public @interface ConfigField {
     Class<?> value() default BaseConfigField.class;
     String name() default "";
+
+    String i18n() default "";
+
 }

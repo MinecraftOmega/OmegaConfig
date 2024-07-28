@@ -1,4 +1,4 @@
-package net.minecraftomega.config.annotations.metadata;
+package net.minecraftomega.config.annotations.conditions;
 
 import java.lang.annotation.*;
 
