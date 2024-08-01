@@ -1,4 +1,4 @@
 package net.omegaloader.config.core.serializer;
 
-public class CFGSerializer {
+public class CFGSerializer implements ISerializer {
 }

@@ -1,4 +1,4 @@
 package net.omegaloader.config.core.deserializer;
 
-public class JSON5Deserializer {
+public class JSON5Deserializer implements IDeserializer {
 }
