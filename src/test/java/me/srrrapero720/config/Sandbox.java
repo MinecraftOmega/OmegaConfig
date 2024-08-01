@@ -47,6 +47,8 @@ public class Sandbox {
 
     // CAN WORKS WITH ANNOTATIONS OR VIA BUILDER
     @NumberConditions(minInt = -50, maxInt = 50)
+    @ConfigField(name = "custonFieldName")
+    @Comment("advanced int field")
     public IntField instanceIntField = null;
 
     static {
