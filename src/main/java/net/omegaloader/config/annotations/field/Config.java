@@ -23,7 +23,7 @@ public @interface Config {
      *
      * <p>Optional, but useful for a proper name display on a i18n language</p>
      *
-     * @return i18n key
+     * @return i18n key, empty by default
      */
     String i18n() default "";
 
@@ -34,7 +34,9 @@ public @interface Config {
      * <p>This value is ignored on nested config parents.</p>
      *
      * @return Max count of backups.
-     * Files are saved named like <code>mymodid-configforwhat.json5_backup1</code>
+     * <code>2</code> by default.
+     *
+     * <p>Backup names remains as the spec name with a suffix. For example: <code>mymodid-configforwhat.json5_backup1</code></p>
      */
     int backups() default 2;
 }

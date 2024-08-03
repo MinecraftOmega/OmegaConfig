@@ -3,6 +3,10 @@ package net.omegaloader.config.annotations.conditions;
 import java.lang.annotation.*;
 import java.util.function.Predicate;
 
+/**
+ * Specify item array conditions for the serializer and deserializer
+ * Valid only on array field types.
+ */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
@@ -16,14 +20,18 @@ public @interface ArrayConditions {
 
     /**
      * Makes serializer to output a single-line array instead of split all entries with a line break
-     * @return array align
+     * @return singleline condition,
+     * <code>false</code> by default, option is ignored when {@link ArrayConditions#stringify()} is <code>true</code>.
      */
     boolean singleline() default false;
 
     /**
-     * Specify a limit of valid entries, limit is always the int {@link Integer#MAX_VALUE MAX_VALUE}
-     * For enums, limit is always the max amount of enums
-     * @return array limit
+     * Specify a limit of entries in an array,
+     * limit is always the maximum theoretical size in java which is {@link Integer#MAX_VALUE}
+     *
+     * @return Max array size, {@link Integer#MAX_VALUE} by default.
+     *
+     * <p>Enum types have a length limit forced to the existing values length by default</p>
      */
     int limit() default Integer.MAX_VALUE;
 
@@ -47,11 +55,24 @@ public @interface ArrayConditions {
      */
     Sorting sorting() default Sorting.NONE;
 
+    /**
+     * Sorting mode
+     */
     enum Sorting {
+        /**
+         * Disables sorting and keep it as-is
+         */
         NONE,
-        ALPHABETICAL,
+        /**
+         * Commonly well-known as alphabetical sorting
+         * @see <a href="https://en.wikipedia.org/wiki/UTF-8#Codepage_layout">UTF-8 Codepage Layout</a>
+         */
         BYTE_WEIGHT,
-        ALPHABETICAL_INVERSE,
-        BYTE_WEIGHT_INVERSE;
+        /**
+         * Commonly well-know as alphabetical sorting, but reversed
+         * @see Sorting#BYTE_WEIGHT
+         * @see <a href="https://en.wikipedia.org/wiki/UTF-8#Codepage_layout">UTF-8 Codepage Layout</a>
+         */
+        BYTE_WEIGHT_REV;
     }
 }

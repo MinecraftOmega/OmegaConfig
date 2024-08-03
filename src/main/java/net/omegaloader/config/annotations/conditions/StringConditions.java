@@ -14,39 +14,57 @@ public @interface StringConditions {
     /**
      * Required CharSequence at the start of the parsed string
      * Mode is ignored for this condition, only checks if fulfills it
-     * @return required CharSequence
+     *
+     * @return required CharSequence at the start, empty by default
      */
     String startsWith() default "";
     /**
      * Required CharSequence at the end of the parsed string
      * Mode is ignored for this condition, only checks if fulfills it
-     * @return required CharSequence
+     *
+     * @return required CharSequence at the end, empty by default
      */
     String endsWith() default "";
 
     /**
-     * Allows if a string can ve empty
-     * @return required condition
+     * Allows if a string can be empty
+     *
+     * @return non-empty conditional, <code>true</code> by default if the default value is NOT empty,
+     * otherwise <code>false</code> by default.
      */
     boolean empty() default true;
 
     /**
      * Required CharSequence contained on the string
-     * Works with RegExp if was configured to work as one
-     * @return required CharSequence
+     * Accepts regex strings
+     *
+     * @see Mode
+     * @return required CharSequence, empty by default
      */
     String value() default "";
 
     /**
+     * Regex flags
      *
-     * @return
+     * @see <a href="https://simpleregex.dev/flags/">Flags used in Regular Expressions</a>
+     * @return string of all regex flags
      */
-    Mode mode() default Mode.STRING;
+    String regexFlags() default "";
+
+    /**
+     * Check mode for the required char sequence
+     *
+     * @see Mode
+     * @return check mode, rev variants are intended to act like <code>if (!true) {}</code>
+     */
+    Mode mode() default Mode.STRING_CONTAINS;
 
     enum Mode {
-        STRING,
+        STRING_CONTAINS,
+        STRING_MATCHS,
         REGEX,
-        NEGATE_STRING,
-        NEGATE_REGEX
+        STRING_CONTAINS_REV,
+        STRING_MATCHS_REV,
+        REGEX_REV
     }
 }
