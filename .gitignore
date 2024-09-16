@@ -3,6 +3,6 @@
 
 # build outputs
 build
-builtJar
+builtJars
 
 build.gradlerun
