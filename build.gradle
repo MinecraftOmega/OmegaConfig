@@ -6,7 +6,7 @@ plugins {
 
 java {
     withSourcesJar()
-    sourceCompatibility = targetCompatibility = JavaVersion.VERSION_1_8
+    sourceCompatibility = targetCompatibility = JavaVersion.VERSION_17
 }
 
 base {
