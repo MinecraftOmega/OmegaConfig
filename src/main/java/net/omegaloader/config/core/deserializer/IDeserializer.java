@@ -1,6 +1,10 @@
 package net.omegaloader.config.core.deserializer;
 
 public interface IDeserializer {
+
+
+    public
+
     // LETS DO THIS FUCKERY
     // FIRST PARSE THE WHOLE FILE, STORE THE COMMENTS ON A MAP, KEY AS DOTTED and VALUE (parent.group1.group2.key=value)
     // THEN READ THE WHOLE SPEC AND VALIDATE IF ANY SPEC KEY MATCHES WITH FILE KEYS

@@ -38,13 +38,20 @@ public abstract class BaseConfigField<T> implements Supplier<T>, Consumer<T> {
         }
     }
 
+    public boolean isGroup() {
+        return false;
+    }
+
     public void set(T value) {
         this.accept(value);
     }
 
     public void refresh() {
-        if (this instanceof Primitive) {
-            ((Primitive) this).refresh0();
+        if (this instanceof GroupField groups) {
+            groups.fields.forEach((s, baseConfigField) -> baseConfigField.refresh());
+        }
+        if (this instanceof Primitive primitive) {
+            primitive.refresh0();
         }
     }
 
