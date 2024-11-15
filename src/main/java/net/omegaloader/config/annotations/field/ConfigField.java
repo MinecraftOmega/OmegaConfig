@@ -20,15 +20,5 @@ public @interface ConfigField {
      *
      * @return config container id, empty by default
      */
-    String name() default "";
-
-    /**
-     * Field name as i18n
-     *
-     * <p>Optional, but useful for a proper name display on a i18n language</p>
-     *
-     * @return i18n key, empty by default
-     */
-    String i18n() default "";
-
+    String value() default "";
 }

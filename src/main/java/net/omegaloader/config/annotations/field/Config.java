@@ -1,5 +1,7 @@
 package net.omegaloader.config.annotations.field;
 
+import net.omegaloader.config.builder.ConfigFileFormat;
+
 import java.lang.annotation.*;
 
 /**
@@ -12,26 +14,30 @@ public @interface Config {
     /**
      * Config identifier
      *
-     * <p>Nested parents are taken as objects</p>
+     * <p>Nested parents are taken as objects and identify is automatically concatenated with parent identifier</p>
      *
-     * @return config container id
+     * <p>Example: parent is id "myfancyconfig" and nested config is "toggles"
+     * the "toggles" id will be "myfanacyconfig.toggles".
+     * </p>
+     *
+     * Some serializers might not be able to support at all nested parents
      */
     String value();
 
     /**
-     * Config name as i18n
+     * Suffix is attached to the config identifier, is only used by the serializer with no special .
      *
-     * <p>Optional, but useful for a proper name display on a i18n language</p>
+     * <p>Value is ignored on nested config parents</p>
      *
-     * @return i18n key, empty by default
+     * @return Empty by default
      */
-    String i18n() default "";
+    String suffix() default "";
 
     /**
      * backup is always triggered after refresh the config spec and got spotted some missing fields and/or exists
      * unassigned fields by the config spec on the file
      *
-     * <p>This value is ignored on nested config parents.</p>
+     * <p>Value is ignored on nested config parents</p>
      *
      * @return Max count of backups.
      * <code>2</code> by default.
@@ -39,4 +45,13 @@ public @interface Config {
      * <p>Backup names remains as the spec name with a suffix. For example: <code>mymodid-configforwhat.json5_backup1</code></p>
      */
     int backups() default 2;
+
+    /**
+     * Config file format, format determines the serializer and extension
+     *
+     * <p>Value is ignored on sub-config classes or nested config classes</p>
+     *
+     * @return {@link ConfigFileFormat#PROP} by default
+     */
+    ConfigFileFormat format() default ConfigFileFormat.PROP;
 }

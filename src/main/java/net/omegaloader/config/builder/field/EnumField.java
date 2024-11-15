@@ -5,7 +5,7 @@ import net.omegaloader.config.Util;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 
-public class EnumField {
+public class EnumField<T extends Enum<T>> {
     private EnumField() {}
 
     public static class Context<T extends Enum<T>> extends BaseConfigField.Context<T> {

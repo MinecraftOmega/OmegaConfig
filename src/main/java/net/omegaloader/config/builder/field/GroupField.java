@@ -19,9 +19,16 @@ public class GroupField extends BaseConfigField<Void> {
         return parent == null ? this : parent;
     }
 
+    public void refresh()
+
     @Override
     public boolean isGroup() {
         return true;
+    }
+
+    @Override
+    public Map<String, BaseConfigField<?>> getFields() {
+        return fields;
     }
 
     public int backups() {

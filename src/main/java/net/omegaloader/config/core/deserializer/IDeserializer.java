@@ -1,9 +1,19 @@
 package net.omegaloader.config.core.deserializer;
 
+import it.unimi.dsi.fastutil.io.FastBufferedInputStream;
+import net.omegaloader.config.builder.ConfigSpec;
+
+import java.io.InputStreamReader;
+import java.nio.Buffer;
+
 public interface IDeserializer {
 
 
-    public
+    void deserialize(ConfigSpec spec, FastBufferedInputStream reader);
+
+    String serialize(ConfigSpec spec);
+
+    void create2line()
 
     // LETS DO THIS FUCKERY
     // FIRST PARSE THE WHOLE FILE, STORE THE COMMENTS ON A MAP, KEY AS DOTTED and VALUE (parent.group1.group2.key=value)

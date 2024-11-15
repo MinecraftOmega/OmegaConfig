@@ -6,7 +6,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.util.Map;
 
-public class MapField {
+public class MapField<K, V> {
     private MapField() {}
 
     public static class Context<K, V> extends BaseConfigField.Context<Map<K, V>> {
