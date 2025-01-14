@@ -1,4 +1,4 @@
-package net.omegaloader.config.core.formats;
+package net.omegaloader.config.formats;
 
 import net.omegaloader.config.ConfigSpec;
 
@@ -11,6 +11,10 @@ public interface IConfigFormat {
     String PROPERTIES = "properties";
     String TOML = "toml";
     String CONFIG = "cfg";
+
+    static IConfigFormat getByName(String name) {
+        // TODO
+    }
 
     /**
      * Identifier of the current IConfigFormat
@@ -45,7 +49,7 @@ public interface IConfigFormat {
 
     default RandomAccessFile generateFile(ConfigSpec spec) {
         try {
-            return new RandomAccessFile(spec.name + (spec.suffix != null ? "-" + spec.suffix : "") + extension(), "rws"); // Read and write sync
+            return new RandomAccessFile(spec.name() + (spec.suffix != null ? "-" + spec.suffix : "") + extension(), "rws"); // Read and write sync
         } catch (FileNotFoundException e) {
             throw new RuntimeException(e);
         }

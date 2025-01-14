@@ -9,7 +9,7 @@ import net.omegaloader.config.api.annotations.NumberConditions;
 import net.omegaloader.config.api.annotations.StringConditions;
 import net.omegaloader.config.api.builder.IntField;
 
-@Config(value = "", i18n = "examplemod.config.parent.name")
+@Config(value = "examplemod")
 public class Sandbox {
     @FieldComment("This is a first-line comment")
     @FieldComment("Here i can add more details")

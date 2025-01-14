@@ -1,6 +1,8 @@
-package net.omegaloader.config.core.formats;
+package net.omegaloader.config.formats;
 
 import net.omegaloader.config.ConfigSpec;
+import net.omegaloader.config.api.builder.BaseConfigField;
+import net.omegaloader.config.api.builder.GroupField;
 
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -49,14 +51,12 @@ public class PROPFormat implements IConfigFormat {
             boolean value_read = false;
 
             // WHILE WE DIDN'T REACH THE END
+            // NOTE: READ RETURNS A UNSIGNED BYTE (0 ~ 255)
+            // SIGNED BYTE IS -128 ~ 127
+            // FORMATS MUST WRITE IN UTF-8 AND READ/CONVERT TO UTF-16
             while ((bait = random.read()) != -1) {
 
-                // NOTE: READ RETURNS A UNSIGNED BYTE (0 ~ 255)
-                // SIGNED BYTE IS -128 ~ 127
-                // FORMATS MUST WRITE IN UTF-8 AND READ/CONVERT TO UTF-16
-                char c = (char) (random.read() & 0xFF); // NORMALIZE, THIS IS DANGEROUS BUT FUCK IT
-
-                switch (c) {
+                switch (bait) {
                     case FORMAT_KEY_LINE_SPLIT:// DISPATCH
                         if (comment_read) {
                             comments.add(comment.toString());
@@ -64,6 +64,26 @@ public class PROPFormat implements IConfigFormat {
                         }
 
                         if (value_read) {
+                            GroupField group = spec.getField(groups.toArray(new String[0]));
+
+
+                            if (group != null) {
+                                BaseConfigField<?> field = group.getField(key.toString());
+
+                                if (field != null) {
+                                    /*
+                                     * CHECK THE TYPE
+                                     * TRY-PARSE
+                                     * CAST
+                                     * SET
+                                     */
+                                    field.set(value.toString());
+                                } else {
+                                    // TODO: must check if id is similar to any existing key and if it doesn't then keep it on file
+                                }
+                            } else {
+                                // TODO: must keep the line
+                            }
 
                         } else { // key-read
                             throw new RuntimeException("Broken");
@@ -95,9 +115,9 @@ public class PROPFormat implements IConfigFormat {
                         }
                     default:
                         if (comment_read) {
-                            comment.append(c);
+                            comment.append(bait);
                         }
-                        ((value_read ? value : key)).append(c);
+                        ((value_read ? value : key)).append(bait);
                         break;
                 }
             }

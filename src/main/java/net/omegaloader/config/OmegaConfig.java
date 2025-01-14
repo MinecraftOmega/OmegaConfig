@@ -2,11 +2,8 @@ package net.omegaloader.config;
 
 import net.omegaloader.config.api.annotations.Config;
 import net.omegaloader.config.api.annotations.ConfigField;
-import net.omegaloader.config.core.Format;
-import net.omegaloader.config.core.formats.IConfigFormat;
 
 import java.lang.reflect.Field;
-import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -25,7 +22,7 @@ public class OmegaConfig {
      * @param configContainer config container which can be a class (staticContext = true) or an instance
      */
     public synchronized static void register(ConfigSpec spec, Object configContainer) {
-        spec.locked = true;
+
     }
 
     /**
@@ -53,12 +50,16 @@ public class OmegaConfig {
         if (!PATTERN.matcher(identifier).find())
             throw new IllegalArgumentException("Config ID must follow the next pattern: " + PATTERN);
 
+        String suffix = config.suffix();
+        if (!PATTERN.matcher(identifier).find())
+            throw new IllegalArgumentException("Config ID must follow the next pattern: " + PATTERN);
+
         String format = config.format();
         if (format == null)
             throw new IllegalArgumentException("Format must not be null");
 
         // Start building
-        ConfigSpec.Builder builder = new ConfigSpec.Builder(identifier, format);
+        ConfigSpec.Builder builder = new ConfigSpec.Builder(identifier, suffix, format, containerClass);
 
         for (Field f: containerClass.getDeclaredFields()) {
             register$defineField(builder, f);
@@ -114,10 +115,8 @@ public class OmegaConfig {
             builder.defineString(fieldName, field);
         } else if (type.isAssignableFrom(Enum.class)) {
             builder.defineEnum(fieldName, field);
-        } else if (type.isAssignableFrom(List.class)) {
-            builder.defineList(fieldName, field);
-        } else if (type.isAssignableFrom(Path.class)) {
-            builder.definePath(fieldName, field);
+        } else if (type.isAssignableFrom(List.class) || type.isArray()) {
+            builder.defineArray(fieldName, field);
         } else {
             throw new IllegalArgumentException("Type '" + type.getName() + "' is not supported");
         }

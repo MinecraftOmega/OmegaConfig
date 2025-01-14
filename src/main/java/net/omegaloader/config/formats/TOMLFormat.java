@@ -1,16 +1,16 @@
-package net.omegaloader.config.core.formats;
+package net.omegaloader.config.formats;
 
 import net.omegaloader.config.ConfigSpec;
 
-public class JSONFormat implements IConfigFormat {
+public class TOMLFormat implements IConfigFormat {
     @Override
     public String id() {
-        return "json";
+        return "toml";
     }
 
     @Override
     public String name() {
-        return "JSON";
+        return "TOML";
     }
 
     @Override

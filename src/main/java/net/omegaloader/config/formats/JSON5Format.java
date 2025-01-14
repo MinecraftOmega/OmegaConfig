@@ -1,16 +1,16 @@
-package net.omegaloader.config.core.formats;
+package net.omegaloader.config.formats;
 
 import net.omegaloader.config.ConfigSpec;
 
-public class CGFFormat implements IConfigFormat {
+public class JSON5Format implements IConfigFormat {
     @Override
     public String id() {
-        return "cfg";
+        return "json5";
     }
 
     @Override
     public String name() {
-        return "CFG";
+        return "JSON5";
     }
 
     @Override

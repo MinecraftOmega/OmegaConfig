@@ -1,6 +1,6 @@
 package net.omegaloader.config.api.annotations;
 
-import net.omegaloader.config.core.Format;
+import net.omegaloader.config.formats.IConfigFormat;
 
 import java.lang.annotation.*;
 
@@ -51,7 +51,7 @@ public @interface Config {
      *
      * <p>Value is ignored on sub-config classes or nested config classes</p>
      *
-     * @return {@link Format#PROP} by default
+     * @return {@link IConfigFormat#PROPERTIES} by default
      */
     String format() default "properties";
 }

@@ -5,9 +5,15 @@ import sun.misc.Unsafe;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 
 public class Util {
+    public static final Pattern DOT_PATTERN = Pattern.compile("\\.");
     private static final Unsafe UNSAFE;
+
+    public static String[] split(String str) {
+        return DOT_PATTERN.split(str);
+    }
 
     public static float similarity(String expected, String input) {
         if (expected == null || input == null) {
