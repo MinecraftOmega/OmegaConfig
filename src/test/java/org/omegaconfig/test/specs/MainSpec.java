@@ -1,15 +1,12 @@
-package me.srrrapero720.config;
+package org.omegaconfig.test.specs;
 
+import me.srrrapero720.config.Yegoslovia;
 import me.srrrapero720.config.util.CustomFilter;
-import org.omegaconfig.api.annotations.Spec;
-import org.omegaconfig.api.annotations.ArrayConditions;
-import org.omegaconfig.api.annotations.FieldComment;
-import org.omegaconfig.api.annotations.NumberConditions;
-import org.omegaconfig.api.annotations.StringConditions;
+import org.omegaconfig.api.annotations.*;
 import org.omegaconfig.impl.fields.IntField;
 
-@Spec(value = "examplemod")
-public class Sandbox {
+@Spec("main")
+public class MainSpec {
     @FieldComment("This is a first-line comment")
     @FieldComment("Here i can add more details")
     @FieldComment("Conditions are attached on comments automatically")
@@ -37,7 +34,6 @@ public class Sandbox {
 
     @Spec(value = "sub_parent")
     public static class SubParent {
-
         @StringConditions(empty = false, value = "^[1-9a-z_]+:[1-9a-z_]+$", mode = StringConditions.Mode.REGEX)
         @Spec.Field
         public static String resourceLocation = "examplemod:valid_resource_location";
@@ -48,6 +44,5 @@ public class Sandbox {
     @NumberConditions(minInt = -50, maxInt = 50)
     @Spec.Field(value = "custonFieldName")
     @FieldComment("advanced int field")
-    public IntField instanceIntField = null;
-
+    public IntField instanceIntField = null;v
 }

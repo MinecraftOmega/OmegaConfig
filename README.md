@@ -15,7 +15,7 @@ this is a independent library.
 - Add an event firing for field updates
 - Serializer/Deserializer registration
 - Custom Field registration
-- ConfigFixers registration (fixes old config fields into the new spec)
+- ConfigFixers registration (fixes old spec fields into the new spec)
 
 ## Basics on coding this library
 - Spec can be defined using annotations or spec builder + fields.
