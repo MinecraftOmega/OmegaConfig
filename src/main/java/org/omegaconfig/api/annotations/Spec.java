@@ -1,7 +1,5 @@
 package org.omegaconfig.api.annotations;
 
-import net.omegaloader.config.formats.IConfigFormat;
-
 import java.lang.annotation.*;
 
 /**
@@ -54,6 +52,14 @@ public @interface Spec {
      * @return {@link IConfigFormat#PROPERTIES} by default
      */
     String format() default "properties";
+
+
+    @Documented
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.CONSTRUCTOR)
+    @interface Constructor {
+
+    }
 
     /**
      * Defines a field as a configuration field.

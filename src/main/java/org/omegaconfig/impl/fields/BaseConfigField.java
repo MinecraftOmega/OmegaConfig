@@ -1,8 +1,8 @@
 package org.omegaconfig.impl.fields;
 
-import net.omegaloader.config.Util;
 import org.omegaconfig.ConfigGroup;
 import org.omegaconfig.ConfigSpec;
+import org.omegaconfig.Tools;
 import org.omegaconfig.api.IConfigField;
 
 import java.lang.reflect.Field;
@@ -25,7 +25,7 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
         this.name = name;
         this.group = group;
         this.comments = comments;
-        this.defaultValue = Util.getFieldValue(field, context);
+        this.defaultValue = Tools.getFieldValue(field, context);
         this.mode = Mode.REFLECT;
         this.field = field;
         this.context = context;
@@ -41,12 +41,6 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
         this.field = null;
         this.context = null;
         this.group.append(this);
-    }
-
-    @Override
-    public String id() {
-        String parentName = this.group != null ? (this.group.id() + ".") : ""; // spec:parent.config or spec:config
-        return parentName + name + (this.group != null ? "" : ":");
     }
 
     @Override
@@ -82,7 +76,7 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
     @Override
     public T get() {
         return switch (this.mode) {
-            case REFLECT -> Util.getFieldValue(this.field, this.context);
+            case REFLECT -> Tools.getFieldValue(this.field, this.context);
             case NATIVE -> this.value;
             case ASM -> throw new UnsupportedOperationException("ASM not implemented yet");
         };
@@ -91,7 +85,7 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
     @Override
     public void accept(T t) {
         switch (this.mode) {
-            case REFLECT -> Util.setField(this.field, this.context, t);
+            case REFLECT -> Tools.setField(this.field, this.context, t);
             case NATIVE -> this.value = t;
             case ASM -> throw new UnsupportedOperationException("ASM not implemented yet");
         }
@@ -101,7 +95,7 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
     @Override
     public boolean reflected() {
         if (this.mode != Mode.REFLECT) return true;
-        T o = Util.getFieldValue(field, context);
+        T o = Tools.getFieldValue(field, context);
         return value.equals(o);
     }
 

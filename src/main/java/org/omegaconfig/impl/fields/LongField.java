@@ -12,7 +12,7 @@ public class LongField extends NumberField<Long> implements LongSupplier {
     public final long max;
     private long primitive;
 
-    protected LongField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, long min, long max, Field field, Object context) {
+    public LongField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, long min, long max, Field field, Object context) {
         super(name, group, comments, math, strictMath, field, context);
         this.primitive = this.defaultValue;
         this.min = min;

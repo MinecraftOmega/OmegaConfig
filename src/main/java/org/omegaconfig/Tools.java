@@ -1,13 +1,55 @@
 package org.omegaconfig;
 
-import sun.misc.Unsafe;
+import it.unimi.dsi.fastutil.Pair;
+import org.omegaconfig.api.annotations.Spec;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import java.lang.reflect.TypeVariable;
+import java.util.List;
 
 public class Tools {
+    public static Annotation[] getAnnotation(Class<?> c) {
+        return c.getAnnotations();
+    }
+
+    public static Pair<Class<?>, Spec> getSpecPair(Class<?> clazz) {
+        return Pair.of(clazz, getClassSpec(clazz));
+    }
+
+    public static Spec getClassSpec(Class<?> c) {
+        Spec spec = c.getAnnotation(Spec.class);
+        if (spec == null)
+            throw new IllegalArgumentException("Class '" + c.getName() + "' has no Spec annotation");
+
+        return spec;
+    }
+
+    public static Spec getClassSpecWeak(Class<?> c) {
+        return c.getAnnotation(Spec.class);
+    }
+
+    public static Spec.Field getFieldSpecWeak(Field field) {
+        return field.getAnnotation(Spec.Field.class);
+    }
+
+    public static Class<?> getType(Field field) {
+        return toBoxed(field.getType());
+    }
+
+    public static Class<?> getOneArgType(Field field) {
+        Class<?> type = getType(field);
+        TypeVariable<?>[] types = type.getTypeParameters();
+
+        if (types.length == 0) return null;
+        if (types.length == 1) return toBoxed(types[0].getClass());
+
+        throw new IllegalArgumentException("Class has more than 2 type arguments");
+    }
+
     public static void closeQuietly(InputStream in) {
         try {
             in.close();
@@ -46,6 +88,22 @@ public class Tools {
         if (clazz == byte.class) return Byte.class;
         if (clazz == char.class) return Character.class;
         return clazz;
+    }
+
+    public static void defineByType(ConfigSpec.SpecBuilder builder, Class<?> fieldClass, Spec.Field specField, Field field, Object context) {
+        final String name = specField.value().isEmpty() ? field.getName() : specField.value();
+        if (fieldClass == Boolean.class) builder.defineBoolean(name, field, context);
+        else if (fieldClass == Byte.class) builder.defineByte(name, field, context);
+        else if (fieldClass == Short.class) builder.defineShort(name, field, context);
+        else if (fieldClass == Character.class) builder.defineChar(name, field, context);
+        else if (fieldClass == Integer.class) builder.defineInt(name, field, context);
+        else if (fieldClass == Long.class) builder.defineLong(name, field, context);
+        else if (fieldClass == Float.class) builder.defineFloat(name, field, context);
+        else if (fieldClass == Double.class) builder.defineDouble(name, field, context);
+        else if (fieldClass == String.class) builder.defineString(name, field, context);
+        else if (fieldClass == List.class) builder.defineList(name, field, context, Tools.getOneArgType(field));
+        else if (fieldClass.isAssignableFrom(Enum.class)) builder.defineEnum(name, field, context);
+        else builder.define(name, field, context);
     }
 
     public static <T> T getFieldValue(Field field, Object context) {
@@ -134,5 +192,17 @@ public class Tools {
 //        } catch (NoSuchFieldException | IllegalAccessException e) {
 //            throw new RuntimeException("Failed to get Unsafe", e);
 //        }
+    }
+
+    public static String concat(String prefix, String key, String... strings) {
+        StringBuilder result = new StringBuilder((strings.length * 8) + 16);
+        result.append(prefix);
+        for (String s: strings) {
+            result.append(s);
+            if (s != strings[strings.length - 1]) { // != was intentional
+                result.append(key);
+            }
+        }
+        return result.toString();
     }
 }

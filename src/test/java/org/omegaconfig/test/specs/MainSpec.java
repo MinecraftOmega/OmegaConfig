@@ -37,12 +37,11 @@ public class MainSpec {
         @StringConditions(empty = false, value = "^[1-9a-z_]+:[1-9a-z_]+$", mode = StringConditions.Mode.REGEX)
         @Spec.Field
         public static String resourceLocation = "examplemod:valid_resource_location";
-
     }
 
     // CAN WORKS WITH ANNOTATIONS OR VIA BUILDER
     @NumberConditions(minInt = -50, maxInt = 50)
     @Spec.Field(value = "custonFieldName")
     @FieldComment("advanced int field")
-    public IntField instanceIntField = null;v
+    public IntField instanceIntField = null;
 }

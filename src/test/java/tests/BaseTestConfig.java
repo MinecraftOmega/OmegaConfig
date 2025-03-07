@@ -1,5 +1,6 @@
 package tests;
 
+import org.omegaconfig.OmegaConfig;
 import org.omegaconfig.api.annotations.Spec;
 
 @Spec("test")

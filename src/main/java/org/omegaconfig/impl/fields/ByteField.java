@@ -12,7 +12,7 @@ public class ByteField extends NumberField<Byte> implements IntSupplier {
     public final byte max;
     private byte primitive;
 
-    protected ByteField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, byte min, byte max, Field field, Object context) {
+    public ByteField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, byte min, byte max, Field field, Object context) {
         super(name, group, comments, math, strictMath, field, context);
         this.primitive = this.defaultValue;
         this.min = min;

@@ -47,11 +47,4 @@ public @interface ArrayConditions {
      * @return filter class, this must be a custom class implementing the filter
      */
     Class<? extends Predicate> filter() default Predicate.class;
-
-    /**
-     * Sets sorting mode for the array
-     * @see ArrayField.Sorting
-     * @return the predefined sort mode, for custom sorting use builder instead
-     */
-    ArrayField.Sorting sorting() default ArrayField.Sorting.NONE;
 }

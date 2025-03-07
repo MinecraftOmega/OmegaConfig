@@ -8,15 +8,24 @@ import java.nio.file.Path;
 import java.util.*;
 
 public final class ConfigSpec extends ConfigGroup {
-    private final Path filePath;
     private final String format;
     private final String suffix;
+    private final Path filePath;
     private final HashSet<IConfigField<?, ?>> dirtyFields = new LinkedHashSet<>();
-    private ConfigSpec(String name, Path path, String format, String suffix) {
+    private final int backups;
+    boolean dirty;
+    private ConfigSpec(String name, String format, String suffix, Path path, int backups) {
         super(name, null);
-        this.filePath = path;
         this.format = format;
         this.suffix = suffix;
+        this.filePath = path;
+        this.backups = backups;
+        this.dirty = true;
+    }
+
+    @Override
+    public String id() {
+        return this.name() + ":";
     }
 
     public void markDirty(IConfigField<?, ?> field) {
@@ -28,7 +37,7 @@ public final class ConfigSpec extends ConfigGroup {
         return this.dirtyFields;
     }
 
-    Path path() {
+    public Path path() {
         return this.filePath;
     }
 
@@ -40,39 +49,79 @@ public final class ConfigSpec extends ConfigGroup {
         return this.suffix;
     }
 
+    int backups() {
+        return this.backups;
+    }
+
     public static final class SpecBuilder {
         private final ConfigSpec spec;
         private ConfigGroup active;
         private final Set<String> comments = new LinkedHashSet<>();
         private final Set<IConfigField<?, ?>> fields = new LinkedHashSet<>();
 
-        public SpecBuilder(String name, Path path, String format, String suffix) {
-            this.spec = new ConfigSpec(name, path, format, suffix);
+        public SpecBuilder(String name, String format, String suffix, Path path, int backups) {
+            this.spec = new ConfigSpec(name, format, suffix, path, backups);
             this.active = this.spec;
-        }
-
-        public <T> ListFieldBuilder<T> defineList(String name, List<T> defaultValue, Class<T> subType) {
-            return new ListFieldBuilder<>(name, this.active, defaultValue, subType);
         }
 
         <T> ListFieldBuilder<T> defineList(String name, Field field, Object context, Class<T> subType) {
             return new ListFieldBuilder<>(name, this.active, field, context, subType);
         }
 
-        public <T extends Enum<T>> EnumFieldBuilder<T> defineEnum(String name, T defaultValue) {
-            return new EnumFieldBuilder<>(name, this.active, defaultValue);
-        }
-
-        <T extends Enum<T>> EnumFieldBuilder<T> defineEnum(String name, T defaultValue, Field field, Object context) {
-            return new EnumFieldBuilder<>(name, this.active, defaultValue, field, context);
-        }
-
-        public StringFieldBuilder defineString(String name, String defaultValue) {
-            return new StringFieldBuilder(name, this.active, defaultValue);
+        <T extends Enum<T>> EnumFieldBuilder<T> defineEnum(String name, Field field, Object context) {
+            return new EnumFieldBuilder<>(name, this.active, field, context);
         }
 
         StringFieldBuilder defineString(String name, Field field, Object context) {
             return new StringFieldBuilder(name, this.active, field, context);
+        }
+
+        BooleanFieldBuilder defineBoolean(String name, Field field, Object context) {
+            return new BooleanFieldBuilder(name, this.active, field, context);
+        }
+
+        ByteFieldBuilder defineByte(String name, Field field, Object context) {
+            return new ByteFieldBuilder(name, this.active, field, context);
+        }
+
+        ShortFieldBuilder defineShort(String name, Field field, Object context) {
+            return new ShortFieldBuilder(name, this.active, field, context);
+        }
+
+        CharFieldBuilder defineChar(String name, Field field, Object context) {
+            return new CharFieldBuilder(name, this.active, field, context);
+        }
+
+        IntFieldBuilder defineInt(String name, Field field, Object context) {
+            return new IntFieldBuilder(name, this.active, field, context);
+        }
+
+        LongFieldBuilder defineLong(String name, Field field, Object context) {
+            return new LongFieldBuilder(name, this.active, field, context);
+        }
+
+        FloatFieldBuilder defineFloat(String name, Field field, Object context) {
+            return new FloatFieldBuilder(name, this.active, field, context);
+        }
+
+        DoubleFieldBuilder defineDouble(String name, Field field, Object context) {
+            return new DoubleFieldBuilder(name, this.active, field, context);
+        }
+
+        <T, S> BaseFieldBuilder<CustomFieldBuilder<T, S>, BaseConfigField<T, S>> define(String name, Field field, Object context) {
+            return new CustomFieldBuilder<>(name, this.active, field, context);
+        }
+
+        public <T> ListFieldBuilder<T> defineList(String name, List<T> defaultValue, Class<T> subType) {
+            return new ListFieldBuilder<>(name, this.active, defaultValue, subType);
+        }
+
+        public <T extends Enum<T>> EnumFieldBuilder<T> defineEnum(String name, T defaultValue) {
+            return new EnumFieldBuilder<>(name, this.active, defaultValue);
+        }
+
+        public StringFieldBuilder defineString(String name, String defaultValue) {
+            return new StringFieldBuilder(name, this.active, defaultValue);
         }
 
         public BooleanFieldBuilder defineBoolean(String name, boolean defaultValue) {
@@ -165,6 +214,16 @@ public final class ConfigSpec extends ConfigGroup {
             this.subType = subType;
         }
 
+        public CustomFieldBuilder(String name, ConfigGroup group, Field field, Object context) {
+            this.name = name;
+            this.group = group;
+            this.defaultValue = null;
+            this.field = field;
+            this.context = context;
+            this.type = (Class<T>) Tools.getType(field);
+            this.subType = (Class<S>) Tools.getOneArgType(field);
+        }
+
         @Override
         public BaseConfigField<T, S> end() {
             return new BaseConfigField<>(this.name, this.group, this.comments, this.defaultValue) {
@@ -215,7 +274,7 @@ public final class ConfigSpec extends ConfigGroup {
 
         @Override
         public ListField<S> end() {
-            if (field == null) {
+            if (this.field == null) {
                 return new ListField<>(this.name, this.group, this.comments, this.defaultValue, this.subType);
             } else {
                 return new ListField<>(this.name, this.group, this.comments, this.subType, this.field, this.context);
@@ -227,31 +286,25 @@ public final class ConfigSpec extends ConfigGroup {
         private final String name;
         private final ConfigGroup group;
         private final T defaultValue;
-        private final Field field;
-        private final Object context;
 
         private EnumFieldBuilder(String name, ConfigGroup group, T defaultValue) {
             this.name = name;
             this.group = group;
             this.defaultValue = defaultValue;
-            this.field = null;
-            this.context = null;
         }
 
-        private EnumFieldBuilder(String name, ConfigGroup group, T defaultValue, Field field, Object context) {
-            this.name = name;
-            this.group = group;
-            this.defaultValue = defaultValue;
+        private EnumFieldBuilder(String name, ConfigGroup group, Field field, Object context) {
+            this(name, group, null);
             this.field = field;
             this.context = context;
         }
 
         @Override
         public EnumField<T> end() {
-            if (field == null) {
+            if (this.field == null) { // WEAK CHECK
                 return new EnumField<>(this.name, this.group, this.comments, this.defaultValue);
             } else {
-                return new EnumField<>(this.name, this.group, this.comments, field, context);
+                return new EnumField<>(this.name, this.group, this.comments, this.field, this.context);
             }
         }
     }
@@ -268,15 +321,17 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         private StringFieldBuilder(String name, ConfigGroup group, Field field, Object context) {
-            this.name = name;
-            this.group = group;
-            this.defaultValue = null;
+            this(name, group, null);
             this.field = field;
             this.context = context;
         }
 
         public StringField end() {
-            return new StringField(this.name, this.group, this.comments, this.field, this.comments);
+            if (this.field == null) {
+                return new StringField(this.name, this.group, this.comments, this.defaultValue);
+            } else {
+                return new StringField(this.name, this.group, this.comments, this.field, this.context);
+            }
         }
     }
 
@@ -291,8 +346,18 @@ public final class ConfigSpec extends ConfigGroup {
             this.defaultValue = defaultValue;
         }
 
+        private BooleanFieldBuilder(String name, ConfigGroup group, Field field, Object context) {
+            this(name, group, false);
+            this.field = field;
+            this.context = context;
+        }
+
         public BooleanField end() {
-            return new BooleanField(this.name, this.group, this.comments, this.defaultValue);
+            if (this.field == null) {
+                return new BooleanField(this.name, this.group, this.comments, this.defaultValue);
+            } else {
+                return new BooleanField(this.name, this.group, this.comments, this.field, this.context);
+            }
         }
     }
 
@@ -309,9 +374,19 @@ public final class ConfigSpec extends ConfigGroup {
             this.max = Byte.MAX_VALUE;
         }
 
+        private ByteFieldBuilder(String name, ConfigGroup group, Field field, Object context) {
+            this(name, group, (byte) 0);
+            this.field = field;
+            this.context = context;
+        }
+
         @Override
         public ByteField end() {
-            return new ByteField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+            if (this.field == null) {
+                return new ByteField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+            } else {
+                return new ByteField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context);
+            }
         }
     }
 
@@ -328,9 +403,19 @@ public final class ConfigSpec extends ConfigGroup {
             this.max = Short.MAX_VALUE;
         }
 
+        private ShortFieldBuilder(String name, ConfigGroup group, Field field, Object context) {
+            this(name, group, (short) 0);
+            this.field = field;
+            this.context = context;
+        }
+
         @Override
         public ShortField end() {
-            return new ShortField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+            if (this.field == null) {
+                return new ShortField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+            } else {
+                return new ShortField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context);
+            }
         }
     }
 
@@ -345,10 +430,19 @@ public final class ConfigSpec extends ConfigGroup {
             this.defaultValue = defaultValue;
         }
 
+        private CharFieldBuilder(String name, ConfigGroup group, Field field, Object context) {
+            this(name, group, (char) 0);
+            this.field = field;
+            this.context = context;
+        }
 
         @Override
         public CharField end() {
-            return new CharField(this.name, this.group, this.comments, this.defaultValue);
+            if (this.field == null) {
+                return new CharField(this.name, this.group, this.comments, this.defaultValue);
+            } else {
+                return new CharField(this.name, this.group, this.comments, this.field, this.context);
+            }
         }
     }
 
@@ -365,9 +459,19 @@ public final class ConfigSpec extends ConfigGroup {
             this.max = Integer.MAX_VALUE;
         }
 
+        private IntFieldBuilder(String name, ConfigGroup group, Field field, Object context) {
+            this(name, group, 0);
+            this.field = field;
+            this.context = context;
+        }
+
         @Override
         public IntField end() {
-            return new IntField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+            if (this.field == null) {
+                return new IntField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+            } else {
+                return new IntField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context);
+            }
         }
     }
 
@@ -384,9 +488,19 @@ public final class ConfigSpec extends ConfigGroup {
             this.max = Long.MAX_VALUE;
         }
 
+        private LongFieldBuilder(String name, ConfigGroup group, Field field, Object context) {
+            this(name, group, 0);
+            this.field = field;
+            this.context = context;
+        }
+
         @Override
         public LongField end() {
-            return new LongField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+            if (this.field == null) {
+                return new LongField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+            } else {
+                return new LongField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context);
+            }
         }
     }
 
@@ -403,9 +517,19 @@ public final class ConfigSpec extends ConfigGroup {
             this.max = Float.MAX_VALUE;
         }
 
+        private FloatFieldBuilder(String name, ConfigGroup group, Field field, Object context) {
+            this(name, group, 0F);
+            this.field = field;
+            this.context = context;
+        }
+
         @Override
         public FloatField end() {
-            return new FloatField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+            if (this.field == null) {
+                return new FloatField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+            } else {
+                return new FloatField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context);
+            }
         }
     }
 
@@ -422,9 +546,19 @@ public final class ConfigSpec extends ConfigGroup {
             this.max = Double.MAX_VALUE;
         }
 
+        private DoubleFieldBuilder(String name, ConfigGroup group, Field field, Object context) {
+            this(name, group, 0D);
+            this.field = field;
+            this.context = context;
+        }
+
         @Override
         public DoubleField end() {
-            return new DoubleField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+            if (this.field == null) {
+                return new DoubleField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+            } else {
+                return new DoubleField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context);
+            }
         }
     }
 

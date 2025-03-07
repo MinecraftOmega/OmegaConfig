@@ -12,7 +12,7 @@ public class DoubleField extends NumberField<Double> implements DoubleSupplier {
     public final double max;
     private double primitive;
 
-    protected DoubleField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, double min, double max, Field field, Object context) {
+    public DoubleField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, double min, double max, Field field, Object context) {
         super(name, group, comments, math, strictMath, field, context);
         this.primitive = this.defaultValue;
         this.min = min;

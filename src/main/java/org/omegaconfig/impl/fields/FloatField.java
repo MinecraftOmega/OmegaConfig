@@ -12,7 +12,7 @@ public class FloatField extends NumberField<Float> implements DoubleSupplier {
     public final float max;
     private float primitive;
 
-    protected FloatField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, float min, float max, Field field, Object context) {
+    public FloatField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, float min, float max, Field field, Object context) {
         super(name, group, comments, math, strictMath, field, context);
         this.primitive = this.defaultValue;
         this.min = min;

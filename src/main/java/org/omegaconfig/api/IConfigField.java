@@ -15,7 +15,12 @@ public interface IConfigField<T, S> extends Consumer<T>, Supplier<T> {
      * <p>Example:</p>
      * <code>exampleid:group_one.group_two.field_id</code>
      */
-    String id();
+    default String id() {
+        final ConfigGroup group = this.group();
+        final String name = this.name();
+        final String parentName = group != null ? (group.id() + ".") : ""; // spec:parent.config or spec:config
+        return parentName + name + (group != null ? "" : ":");
+    }
 
     /**
      * Returns the field name, commonly the local field qualifier
@@ -31,6 +36,19 @@ public interface IConfigField<T, S> extends Consumer<T>, Supplier<T> {
      * Provides the group of the field, by default the spec is the main group
      */
     ConfigGroup group();
+
+    /**
+     * Provides the groups count above this field
+     */
+    default int groupCount() {
+        int count = 0;
+        ConfigGroup g = this.group();
+        while (g != null) {
+            count++;
+            g = g.group();
+        }
+        return count;
+    }
 
     /**
      * Provides field type

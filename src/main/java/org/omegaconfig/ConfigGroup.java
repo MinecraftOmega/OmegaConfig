@@ -2,6 +2,8 @@ package org.omegaconfig;
 
 import org.omegaconfig.api.IConfigField;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -19,6 +21,10 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
         }
     }
 
+    public Collection<IConfigField<?, ?>> getFields() {
+        return Collections.unmodifiableSet(fields);
+    }
+
     public IConfigField<?, ?> getField(String id) {
         for (IConfigField<?,?> field: this.fields) {
             if (field.id().equals(id)) {
@@ -28,14 +34,64 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
         return null;
     }
 
-    public void markDirty(IConfigField<?, ?> field) {
-        this.spec().markDirty(field);
+    public IConfigField<?, ?> findField(String id) {
+        if (id == null || id.isEmpty()) {
+            return null;
+        }
+
+        // STRIP THE ID
+        int specSeparator = id.indexOf(":");
+        String specId = specSeparator != -1 ? id.substring(0, specSeparator) : null;
+        String path = specSeparator != -1 ? id.substring(specSeparator + 1) : id;
+
+        // CHECK IF THE ID ITS OF ANOTHER SPEC (GO TO HELL)
+        if (specId != null && !specId.equals(this.spec().id())) {
+            return null;
+        }
+
+        // STRIP THE PATH
+        String[] parts = path.split("\\.");
+
+        // RUN FROM THIS
+        ConfigGroup current = this;
+
+        // ITERATE ALL ID PARTS
+        for (int i = 0; i < parts.length; i++) {
+            String part = parts[i];
+            boolean isLast = i == parts.length - 1;
+
+            // LOOKUP FOR THE PART
+            IConfigField<?, ?> field = null;
+            for (IConfigField<?, ?> f: current.fields) {
+                if (f.name().equals(part)) {
+                    field = f;
+                    break;
+                }
+            }
+
+            // NOT FOUND
+            if (field == null) {
+                return null;
+            }
+
+            // IF WAS LAST, RETURN IT
+            if (isLast) {
+                return field;
+            }
+
+            // NEXT LEVEL
+            if (field instanceof ConfigGroup group) {
+                current = group;
+            } else {
+                return null; // MALFORMED ID
+            }
+        }
+
+        return null;
     }
 
-    @Override
-    public String id() {
-        String parentName = this.group != null ? (this.group.id() + ".") : ""; // spec:parent.config or spec:config
-        return parentName + name + (this.group != null ? "" : ":");
+    public void markDirty(IConfigField<?, ?> field) {
+        this.spec().markDirty(field);
     }
 
     @Override
@@ -53,7 +109,6 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
         return (this.group instanceof ConfigSpec spec) ? spec : this.group.spec();
     }
 
-
     @Override
     public Class<Void> type() {
         throw new UnsupportedOperationException("Groups cannot handle types");
@@ -69,7 +124,7 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
         return comments.toArray(new String[0]);
     }
 
-    public void append(IConfigField<?, ?> field) {
+    public <T extends IConfigField<?, ?>> void append(T field) {
         this.fields.add(field);
     }
 

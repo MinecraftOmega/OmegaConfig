@@ -12,7 +12,7 @@ public class ShortField extends NumberField<Short> implements IntSupplier {
     public final short max;
     private short primitive;
 
-    protected ShortField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, short min, short max, Field field, Object context) {
+    public ShortField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, short min, short max, Field field, Object context) {
         super(name, group, comments, math, strictMath, field, context);
         this.primitive = this.defaultValue;
         this.min = min;
