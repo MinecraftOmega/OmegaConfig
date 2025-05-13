@@ -1,71 +1,17 @@
 package org.omegaconfig;
 
-import it.unimi.dsi.fastutil.Pair;
 import org.omegaconfig.api.annotations.Spec;
 
+import java.io.Closeable;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.RandomAccessFile;
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.TypeVariable;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 
 public class Tools {
-    public static Annotation[] getAnnotation(Class<?> c) {
-        return c.getAnnotations();
-    }
-
-    public static Pair<Class<?>, Spec> getSpecPair(Class<?> clazz) {
-        return Pair.of(clazz, getClassSpec(clazz));
-    }
-
-    public static Spec getClassSpec(Class<?> c) {
-        Spec spec = c.getAnnotation(Spec.class);
-        if (spec == null)
-            throw new IllegalArgumentException("Class '" + c.getName() + "' has no Spec annotation");
-
-        return spec;
-    }
-
-    public static Spec getClassSpecWeak(Class<?> c) {
-        return c.getAnnotation(Spec.class);
-    }
-
-    public static Spec.Field getFieldSpecWeak(Field field) {
-        return field.getAnnotation(Spec.Field.class);
-    }
-
-    public static Class<?> getType(Field field) {
-        return toBoxed(field.getType());
-    }
-
-    public static Class<?> getOneArgType(Field field) {
-        Class<?> type = getType(field);
-        TypeVariable<?>[] types = type.getTypeParameters();
-
-        if (types.length == 0) return null;
-        if (types.length == 1) return toBoxed(types[0].getClass());
-
-        throw new IllegalArgumentException("Class has more than 2 type arguments");
-    }
-
-    public static void closeQuietly(InputStream in) {
-        try {
-            in.close();
-        } catch (IOException e) {
-            // ignored
-        }
-    }
-
-    public static void closeQuietly(RandomAccessFile in) {
-        try {
-            in.close();
-        } catch (IOException e) {
-            // ignored
-        }
-    }
-
     public static Class<?> toPrimitive(Class<?> clazz) {
         if (clazz == Integer.class) return int.class;
         if (clazz == Double.class) return double.class;
@@ -90,23 +36,59 @@ public class Tools {
         return clazz;
     }
 
-    public static void defineByType(ConfigSpec.SpecBuilder builder, Class<?> fieldClass, Spec.Field specField, Field field, Object context) {
-        final String name = specField.value().isEmpty() ? field.getName() : specField.value();
-        if (fieldClass == Boolean.class) builder.defineBoolean(name, field, context);
-        else if (fieldClass == Byte.class) builder.defineByte(name, field, context);
-        else if (fieldClass == Short.class) builder.defineShort(name, field, context);
-        else if (fieldClass == Character.class) builder.defineChar(name, field, context);
-        else if (fieldClass == Integer.class) builder.defineInt(name, field, context);
-        else if (fieldClass == Long.class) builder.defineLong(name, field, context);
-        else if (fieldClass == Float.class) builder.defineFloat(name, field, context);
-        else if (fieldClass == Double.class) builder.defineDouble(name, field, context);
-        else if (fieldClass == String.class) builder.defineString(name, field, context);
-        else if (fieldClass == List.class) builder.defineList(name, field, context, Tools.getOneArgType(field));
-        else if (fieldClass.isAssignableFrom(Enum.class)) builder.defineEnum(name, field, context);
-        else builder.define(name, field, context);
+    public static Spec specOfWeak(Class<?> c) {
+        return c.getAnnotation(Spec.class);
     }
 
-    public static <T> T getFieldValue(Field field, Object context) {
+    public static Spec specOf(Class<?> c) {
+        Spec spec = specOfWeak(c);
+        if (spec == null)
+            throw new IllegalArgumentException("Class '" + c.getName() + "' has no Spec annotation");
+
+        return spec;
+    }
+
+    public static Spec.Field specFieldOf(Field field) {
+        return field.getAnnotation(Spec.Field.class);
+    }
+
+    public static Class<?> typeOf(Field field) {
+        return toBoxed(field.getType());
+    }
+
+    public static Class<?> subTypeOf(Field field) {
+        Class<?> type = typeOf(field);
+        TypeVariable<?>[] types = type.getTypeParameters();
+
+        if (types.length == 0) return null;
+        if (types.length == 1) return types[0].getClass(); // toBoxed in generics is not needed
+
+        throw new IllegalArgumentException("Class has more than 2 type arguments");
+    }
+
+    public static String concat(String prefix, String suffix, char key, Collection<String> strings) {
+        StringBuilder result = new StringBuilder((strings.size() * 8) + 16);
+        result.append(prefix);
+        Iterator<String> it = strings.iterator();
+        while (it.hasNext()) {
+            result.append(it.next());
+            if (it.hasNext()) {
+                result.append(key);
+            }
+        }
+        result.append(suffix);
+        return result.toString();
+    }
+
+    public static String concat(String prefix, String suffix, char key, String... strings) {
+        return concat(prefix, suffix, key, Arrays.asList(strings));
+    }
+
+    public static void closeQuietly(Closeable in) {
+        try { in.close(); } catch (IOException e) { /* ignored */ }
+    }
+
+    public static <T> T valueFrom(Field field, Object context) {
         try {
             T result = (T) field.get(context);
             if (result == null) throw new NullPointerException("Field doesn't define a default value");
@@ -116,7 +98,7 @@ public class Tools {
         }
     }
 
-    public static <T> void setField(Field field, Object context, T value) {
+    public static <T> void setFieldValue(Field field, Object context, T value) {
         try {
             field.set(context, value);
         } catch (ReflectiveOperationException e) {
@@ -124,7 +106,7 @@ public class Tools {
         }
     }
 
-    public static void setField(Field field, Object context, byte byteValue) {
+    public static void setFieldValue(Field field, Object context, byte byteValue) {
         try {
             field.setByte(context, byteValue);
         } catch (ReflectiveOperationException e) {
@@ -132,7 +114,7 @@ public class Tools {
         }
     }
 
-    public static void setField(Field field, Object context, short shortValue) {
+    public static void setFieldValue(Field field, Object context, short shortValue) {
         try {
             field.setShort(context, shortValue);
         } catch (ReflectiveOperationException e) {
@@ -140,7 +122,7 @@ public class Tools {
         }
     }
 
-    public static void setField(Field field, Object context, int intValue) {
+    public static void setFieldValue(Field field, Object context, int intValue) {
         try {
             field.setInt(context, intValue);
         } catch (ReflectiveOperationException e) {
@@ -148,7 +130,7 @@ public class Tools {
         }
     }
 
-    public static void setField(Field field, Object context, long longValue) {
+    public static void setFieldValue(Field field, Object context, long longValue) {
         try {
             field.setLong(context, longValue);
         } catch (ReflectiveOperationException e) {
@@ -156,7 +138,7 @@ public class Tools {
         }
     }
 
-    public static void setField(Field field, Object context, float floatValue) {
+    public static void setFieldValue(Field field, Object context, float floatValue) {
         try {
             field.setFloat(context, floatValue);
         } catch (ReflectiveOperationException e) {
@@ -164,7 +146,7 @@ public class Tools {
         }
     }
 
-    public static void setField(Field field, Object context, double byteValue) {
+    public static void setFieldValue(Field field, Object context, double byteValue) {
         try {
             field.setDouble(context, byteValue);
         } catch (ReflectiveOperationException e) {
@@ -172,7 +154,7 @@ public class Tools {
         }
     }
 
-    public static void setField(Field field, Object context, char charValue) {
+    public static void setFieldValue(Field field, Object context, char charValue) {
         try {
             field.setChar(context, charValue);
         } catch (ReflectiveOperationException e) {
@@ -194,15 +176,5 @@ public class Tools {
 //        }
     }
 
-    public static String concat(String prefix, String key, String... strings) {
-        StringBuilder result = new StringBuilder((strings.length * 8) + 16);
-        result.append(prefix);
-        for (String s: strings) {
-            result.append(s);
-            if (s != strings[strings.length - 1]) { // != was intentional
-                result.append(key);
-            }
-        }
-        return result.toString();
-    }
+
 }

@@ -3,11 +3,10 @@ package org.omegaconfig.impl.fields;
 import org.omegaconfig.ConfigGroup;
 
 import java.lang.reflect.Field;
-import java.util.List;
 import java.util.Set;
 import java.util.function.IntSupplier;
 
-public class ByteField extends NumberField<Byte> implements IntSupplier {
+public final class ByteField extends BaseNumberField<Byte> implements IntSupplier {
     public final byte min;
     public final byte max;
     private byte primitive;
@@ -43,5 +42,15 @@ public class ByteField extends NumberField<Byte> implements IntSupplier {
 
     public byte getAsByte() {
         return primitive;
+    }
+
+    @Override
+    public String minValueString() {
+        return this.min == Byte.MIN_VALUE ? null : String.valueOf(min);
+    }
+
+    @Override
+    public String maxValueString() {
+        return this.max == Byte.MAX_VALUE ? null : String.valueOf(max);
     }
 }

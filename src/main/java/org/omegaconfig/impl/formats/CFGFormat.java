@@ -1,30 +1,34 @@
 package org.omegaconfig.impl.formats;
 
-import org.omegaconfig.ConfigSpec;
-import org.omegaconfig.OmegaConfig;
-import org.omegaconfig.api.IFormat;
+import org.omegaconfig.api.formats.IFormatReader;
+import org.omegaconfig.api.formats.IFormatWriter;
+import org.omegaconfig.api.formats.IFormatCodec;
 
 import java.nio.file.Path;
 
-public class CFGFormat implements IFormat {
+public class CFGFormat implements IFormatCodec {
     @Override
     public String id() {
-        return OmegaConfig.FORMAT_CFG;
+        return "";
     }
 
     @Override
-    public boolean serialize(ConfigSpec spec) {
-        return false;
+    public String extension() {
+        return "";
     }
 
     @Override
-    public boolean deserialize(ConfigSpec spec, Path path) {
-        return false;
+    public String mimeType() {
+        return "";
     }
 
     @Override
-    public void release() {
-
+    public IFormatReader createReader(Path filePath) {
+        return null;
     }
 
+    @Override
+    public IFormatWriter createWritter(Path filePath) {
+        return null;
+    }
 }

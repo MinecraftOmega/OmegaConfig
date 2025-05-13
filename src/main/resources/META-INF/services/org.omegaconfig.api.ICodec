@@ -10,3 +10,4 @@ org.omegaconfig.impl.codecs.LongCodec
 org.omegaconfig.impl.codecs.ShortCodec
 org.omegaconfig.impl.codecs.FileCodec
 org.omegaconfig.impl.codecs.URICodec
+org.omegaconfig.impl.codecs.PathCodec

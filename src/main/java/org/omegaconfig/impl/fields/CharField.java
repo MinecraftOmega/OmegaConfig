@@ -6,7 +6,7 @@ import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Set;
 
-public class CharField extends BaseConfigField<Character, Void> {
+public final class CharField extends BaseConfigField<Character, Void> {
 
     private char primitive;
 

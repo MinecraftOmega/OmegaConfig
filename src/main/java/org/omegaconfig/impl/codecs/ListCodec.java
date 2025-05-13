@@ -5,10 +5,10 @@ import org.omegaconfig.api.IComplexCodec;
 import java.util.ArrayList;
 import java.util.List;
 
-public class ListCodec implements IComplexCodec<List<?>, Object> {
+public class ListCodec implements IComplexCodec<List, Object> {
 
     @Override
-    public List<?> decode(String value, Class<Object> subType) {
+    public List decode(String value, Class<Object> subType) {
         if (!value.startsWith("[") || !value.endsWith("]")) return null;
 
         boolean expectChar = Character.class.equals(subType);
@@ -60,12 +60,25 @@ public class ListCodec implements IComplexCodec<List<?>, Object> {
     }
 
     @Override
-    public String encode(List<?> instance, Class<Object> subType) {
+    public String encode(List instance, Class<?> subType) {
         return "";
     }
 
     @Override
-    public Class<List<?>> type() {
-        return null;
+    public Class<List> type() {
+        return List.class;
+    }
+
+    private static String toSerializedArray(List<String> items) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("[");
+        for (int i = 0; i < items.size(); i++) {
+            builder.append(items.get(i));
+            if (i < items.size() - 1) {
+                builder.append(",\n");
+            }
+        }
+        builder.append("]");
+        return builder.toString();
     }
 }

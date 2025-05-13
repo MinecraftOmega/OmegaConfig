@@ -49,9 +49,9 @@ public @interface Spec {
      *
      * <p>Value is ignored on sub-config classes or nested config classes</p>
      *
-     * @return {@link IConfigFormat#PROPERTIES} by default
+     * @return {@link org.omegaconfig.OmegaConfig#FORMAT_PROPERTIES} by default
      */
-    String format() default "properties";
+    String format() default OmegaConfig.FORMAT_PROPERTIES;
 
 
     @Documented

@@ -6,7 +6,7 @@ import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Set;
 
-public class EnumField<T extends Enum<T>> extends BaseConfigField<T, T> implements Comparable<T> {
+public final class EnumField<T extends Enum<T>> extends BaseConfigField<T, T> implements Comparable<T> {
 
     public EnumField(String name, ConfigGroup group, Set<String> comments, Field field, Object context) {
         super(name, group, comments, field, context);

@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 
-public class BooleanField extends BaseConfigField<Boolean, Void> implements BooleanSupplier {
+public final class BooleanField extends BaseConfigField<Boolean, Void> implements BooleanSupplier {
     private boolean primitive;
 
     public BooleanField(String name, ConfigGroup group, Set<String> comments, Field field, Object context) {

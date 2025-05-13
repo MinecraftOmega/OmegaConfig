@@ -1,6 +1,9 @@
 package org.omegaconfig.api.annotations;
 
+import org.omegaconfig.impl.fields.StringField;
+
 import java.lang.annotation.*;
+import java.util.regex.Pattern;
 
 /**
  * Conditions required on strings to match
@@ -32,13 +35,13 @@ public @interface StringConditions {
      * @return non-empty conditional, <code>true</code> by default if the default value is NOT empty,
      * otherwise <code>false</code> by default.
      */
-    boolean empty() default true;
+    boolean allowEmpty() default true;
 
     /**
      * Required CharSequence contained on the string
      * Accepts regex strings
      *
-     * @see Mode
+     * @see StringField.Mode
      * @return required CharSequence, empty by default
      */
     String value() default "";
@@ -47,24 +50,16 @@ public @interface StringConditions {
      * Regex flags
      *
      * @see <a href="https://simpleregex.dev/flags/">Flags used in Regular Expressions</a>
-     * @return string of all regex flags
+     * @see Pattern
+     * @return int of all regex flags
      */
-    String regexFlags() default "";
+    int regexFlags() default Pattern.CASE_INSENSITIVE;
 
     /**
      * Check mode for the required char sequence
      *
-     * @see Mode
+     * @see StringField.Mode
      * @return check mode, rev variants are intended to act like <code>if (!true) {}</code>
      */
-    Mode mode() default Mode.STRING_CONTAINS;
-
-    enum Mode {
-        STRING_CONTAINS,
-        STRING_MATCHS,
-        REGEX,
-        STRING_CONTAINS_REV,
-        STRING_MATCHS_REV,
-        REGEX_REV
-    }
+    StringField.Mode mode() default StringField.Mode.CONTAINS;
 }

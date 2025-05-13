@@ -3,11 +3,10 @@ package org.omegaconfig.impl.fields;
 import org.omegaconfig.ConfigGroup;
 
 import java.lang.reflect.Field;
-import java.util.List;
 import java.util.Set;
 import java.util.function.LongSupplier;
 
-public class LongField extends NumberField<Long> implements LongSupplier {
+public final class LongField extends BaseNumberField<Long> implements LongSupplier {
     public final long min;
     public final long max;
     private long primitive;
@@ -39,5 +38,15 @@ public class LongField extends NumberField<Long> implements LongSupplier {
     @Override
     public long getAsLong() {
         return primitive;
+    }
+
+    @Override
+    public String minValueString() {
+        return this.min == Long.MIN_VALUE ? null : String.valueOf(min);
+    }
+
+    @Override
+    public String maxValueString() {
+        return this.max == Long.MAX_VALUE ? null : String.valueOf(max);
     }
 }

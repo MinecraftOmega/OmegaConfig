@@ -25,6 +25,7 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
         return Collections.unmodifiableSet(fields);
     }
 
+    // FIXME: this is not iterating the fields inside the groups
     public IConfigField<?, ?> getField(String id) {
         for (IConfigField<?,?> field: this.fields) {
             if (field.id().equals(id)) {

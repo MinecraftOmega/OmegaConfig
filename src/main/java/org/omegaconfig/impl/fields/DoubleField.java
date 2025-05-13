@@ -3,11 +3,10 @@ package org.omegaconfig.impl.fields;
 import org.omegaconfig.ConfigGroup;
 
 import java.lang.reflect.Field;
-import java.util.List;
 import java.util.Set;
 import java.util.function.DoubleSupplier;
 
-public class DoubleField extends NumberField<Double> implements DoubleSupplier {
+public final class DoubleField extends BaseNumberField<Double> implements DoubleSupplier {
     public final double min;
     public final double max;
     private double primitive;
@@ -39,5 +38,15 @@ public class DoubleField extends NumberField<Double> implements DoubleSupplier {
     @Override
     public double getAsDouble() {
         return primitive;
+    }
+
+    @Override
+    public String minValueString() {
+        return this.min == Double.MIN_VALUE ? null : String.valueOf(min);
+    }
+
+    @Override
+    public String maxValueString() {
+        return this.max == Double.MAX_VALUE ? null : String.valueOf(max);
     }
 }

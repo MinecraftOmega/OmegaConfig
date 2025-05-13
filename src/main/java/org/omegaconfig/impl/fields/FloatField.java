@@ -3,11 +3,10 @@ package org.omegaconfig.impl.fields;
 import org.omegaconfig.ConfigGroup;
 
 import java.lang.reflect.Field;
-import java.util.List;
 import java.util.Set;
 import java.util.function.DoubleSupplier;
 
-public class FloatField extends NumberField<Float> implements DoubleSupplier {
+public final class FloatField extends BaseNumberField<Float> implements DoubleSupplier {
     public final float min;
     public final float max;
     private float primitive;
@@ -43,5 +42,15 @@ public class FloatField extends NumberField<Float> implements DoubleSupplier {
 
     public double getAsFloat() {
         return primitive;
+    }
+
+    @Override
+    public String minValueString() {
+        return this.min == Float.MIN_VALUE ? null : String.valueOf(min);
+    }
+
+    @Override
+    public String maxValueString() {
+        return this.max == Float.MAX_VALUE ? null : String.valueOf(max);
     }
 }

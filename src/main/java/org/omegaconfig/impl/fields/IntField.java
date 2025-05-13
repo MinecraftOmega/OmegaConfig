@@ -6,7 +6,7 @@ import java.lang.reflect.Field;
 import java.util.Set;
 import java.util.function.IntSupplier;
 
-public class IntField extends NumberField<Integer> implements IntSupplier {
+public final class IntField extends BaseNumberField<Integer> implements IntSupplier {
     public final int min;
     public final int max;
     private int primitive;
@@ -38,5 +38,15 @@ public class IntField extends NumberField<Integer> implements IntSupplier {
     @Override
     public int getAsInt() {
         return primitive;
+    }
+
+    @Override
+    public String maxValueString() {
+        return this.max == Integer.MAX_VALUE ? null : String.valueOf(max);
+    }
+
+    @Override
+    public String minValueString() {
+        return this.min == Integer.MIN_VALUE ? null : String.valueOf(min);
     }
 }

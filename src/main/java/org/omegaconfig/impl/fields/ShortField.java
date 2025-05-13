@@ -3,11 +3,10 @@ package org.omegaconfig.impl.fields;
 import org.omegaconfig.ConfigGroup;
 
 import java.lang.reflect.Field;
-import java.util.List;
 import java.util.Set;
 import java.util.function.IntSupplier;
 
-public class ShortField extends NumberField<Short> implements IntSupplier {
+public final class ShortField extends BaseNumberField<Short> implements IntSupplier {
     public final short min;
     public final short max;
     private short primitive;
@@ -43,5 +42,16 @@ public class ShortField extends NumberField<Short> implements IntSupplier {
 
     public short getAsShort() {
         return primitive;
+    }
+
+    @Override
+    public String minValueString() {
+        return this.min == Short.MIN_VALUE ? null : String.valueOf(min);
+    }
+
+    @Override
+
+    public String maxValueString() {
+        return this.max == Short.MAX_VALUE ? null : String.valueOf(max);
     }
 }

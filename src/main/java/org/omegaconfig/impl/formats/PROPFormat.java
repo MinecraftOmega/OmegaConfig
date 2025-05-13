@@ -1,27 +1,21 @@
 package org.omegaconfig.impl.formats;
 
-import org.omegaconfig.ConfigGroup;
-import org.omegaconfig.ConfigSpec;
 import org.omegaconfig.OmegaConfig;
 import org.omegaconfig.Tools;
-import org.omegaconfig.api.IConfigField;
-import org.omegaconfig.api.IFormat;
-import org.omegaconfig.impl.fields.NumberField;
+import org.omegaconfig.api.formats.IFormatReader;
+import org.omegaconfig.api.formats.IFormatWriter;
+import org.omegaconfig.api.formats.IFormatCodec;
 
-import java.io.FileNotFoundException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 
-public class PROPFormat implements IFormat {
-    public static final char FORMAT_KEY_DEF_SPLIT = '=';
+public class PROPFormat implements IFormatCodec {
+    public static final String FORMAT_KEY_DEF_SPLIT = "=";
+    public static final String FORMAT_KEY_BREAKLINE = "\n";
+    public static final String FORMAT_KEY_COMMENT_LINE = "#";
     public static final char FORMAT_KEY_GROUP_SPLIT = '.';
-    public static final char FORMAT_KEY_LINE_SPLIT = '\n';
-    public static final char FORMAT_KEY_LINE_TAB = '\t';
-    public static final char FORMAT_KEY_COMMENT_LINE = '#';
-    public static final char FORMAT_EMPTY = ' ';
-
-    public static final HashMap<Path, RandomAccessFile> OPEN_FILES = new HashMap<>();
 
     @Override
     public String id() {
@@ -29,159 +23,121 @@ public class PROPFormat implements IFormat {
     }
 
     @Override
-    public boolean serialize(ConfigSpec spec) {
-        try {
-            RandomAccessFile file = OPEN_FILES.computeIfAbsent(spec.path(), path1 -> {
-                try {
-                    path1.toFile().getParentFile().mkdirs();
-                    return new RandomAccessFile(path1.toFile(), "rws");
-                } catch (FileNotFoundException e) {
-                    throw new RuntimeException("Failed to open config file '" + path1 + "'", e);
+    public String extension() {
+        return "." + id();
+    }
+
+    @Override
+    public String mimeType() {
+        return "text/x-java-properties";
+    }
+
+    @Override
+    public IFormatReader createReader(Path filePath) throws IOException {
+        return new FormatReader(filePath);
+    }
+
+    @Override
+    public IFormatWriter createWritter(Path filePath) throws IOException {
+        return new FormatWriter(filePath);
+    }
+
+    private static class FormatReader implements IFormatReader {
+        private final LinkedHashMap<String, String> fields = new LinkedHashMap<>();
+        private final LinkedHashSet<String> groups = new LinkedHashSet<>();
+
+        public FormatReader(Path filePath) throws IOException {
+            final BufferedReader in = new BufferedReader(new FileReader(filePath.toFile()));
+
+            String line;
+            while ((line = in.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty() || line.startsWith(FORMAT_KEY_COMMENT_LINE)) {
+                    continue; // Skip empty lines and comments
                 }
-            });
 
-            file.setLength(0);
-            StringBuilder builder = new StringBuilder();
+                String[] parts = line.split(FORMAT_KEY_DEF_SPLIT, 2);
+                if (parts.length == 2) {
+                    String key = parts[0].trim();
+                    String value = parts[1].trim();
+                    fields.put(key, value);
+                }
+            }
 
-            serialize$put(spec, builder);
+            in.close();
+        }
 
-            file.write(builder.toString().getBytes());
-            System.out.println("Serialization finished");
-            return true;
-        } catch (Exception e) {
-            System.out.println(e.getCause());
-            return false;
+        @Override
+        public String read(String fieldName) {
+            // CONCAT THE GROUPS
+            StringBuilder group = new StringBuilder();
+            for (String g : this.groups) {
+                group.append(g).append(FORMAT_KEY_GROUP_SPLIT);
+            }
+            return fields.get(group.append(fieldName).toString());
+        }
+
+        @Override
+        public void push(String group) {
+            this.groups.add(group);
+        }
+
+        @Override
+        public void pop() {
+            this.groups.removeLast();
+        }
+
+        @Override
+        public void close() {
+            this.fields.clear();
         }
     }
 
-    private static void serialize$put(ConfigGroup group, StringBuilder builder) {
-        for (IConfigField<?, ?> field: group.getFields()) {
-            if (field instanceof ConfigGroup g) {
-                serialize$put(g, builder);
-                continue;
-            }
+    private static class FormatWriter implements IFormatWriter {
+        private final LinkedHashSet<String> groups = new LinkedHashSet<>();
+        private final BufferedWriter out;
+        private final StringBuilder data = new StringBuilder();
 
-            for (String c: field.comments()) {
-                builder.append(FORMAT_KEY_COMMENT_LINE).append(c).append(FORMAT_KEY_LINE_SPLIT);
-            }
-            if (field instanceof NumberField<?> numberField) {
-                if (numberField.math()) {
-                    builder.append(FORMAT_KEY_COMMENT_LINE).append("Accepts mathemathical operations").append(FORMAT_KEY_LINE_SPLIT);
-                }
-            }
+        public FormatWriter(Path filePath) throws IOException {
+            this.out = new BufferedWriter(new FileWriter(filePath.toFile()));
+        }
 
-            builder.append(group.name())
-                    .append(FORMAT_KEY_GROUP_SPLIT)
-                    .append(field.name())
+        @Override
+        public void write(String comment) {
+            this.data.append(FORMAT_KEY_COMMENT_LINE + " ")
+                    .append(comment)
+                    .append(FORMAT_KEY_BREAKLINE);
+        }
+
+        @Override
+        public void write(String fieldName, String value) {
+            this.data.append(Tools.concat("", "", FORMAT_KEY_GROUP_SPLIT, groups))
                     .append(FORMAT_KEY_DEF_SPLIT)
-                    .append(field.get())
-                    .append(FORMAT_KEY_LINE_SPLIT);
+                    .append(value)
+                    .append(FORMAT_KEY_BREAKLINE);
         }
-    }
 
-    @Override
-    public boolean deserialize(ConfigSpec spec, Path path) {
-        try {
-            final RandomAccessFile file = OPEN_FILES.computeIfAbsent(path, path1 -> {
-                try {
-                    return new RandomAccessFile(path1.toFile(), "rws");
-                } catch (FileNotFoundException e) {
-                    throw new RuntimeException("Failed to open config file '" + path1 + "'", e);
-                }
-            });
+        @Override
+        // TODO: implement a check for re-pushing a wrote group
+        public void push(String groupName) {
+            this.groups.add(groupName);
+            this.data.append(Tools.concat("", "", FORMAT_KEY_GROUP_SPLIT, groups));
+        }
 
-            final var comments = new ArrayList<String>();
+        @Override
+        public void pop() {
+            this.groups.removeLast();
+            this.data.append(FORMAT_KEY_BREAKLINE.repeat(2));
+        }
 
-            // STORAGE
-            final var id = new LinkedList<String>();
-            var comment = new StringBuilder();
-            var key = new StringBuilder();
-            var value = new StringBuilder();
-
-            // POS
-            long pos = 0;
-            long lenght = file.length();
-
-            // STATE
-            int bait;
-            boolean comment_read = false;
-            boolean value_read = false;
-
-            // WHILE WE DIDN'T REACH THE END
-            // NOTE: READ RETURNS A UNSIGNED BYTE (0 ~ 255)
-            // SIGNED BYTE IS -128 ~ 127
-            // FORMATS MUST WRITE IN UTF-8 AND READ/CONVERT TO UTF-16
-            while ((bait = file.read()) != -1) {
-
-                switch (bait) {
-                    case FORMAT_KEY_LINE_SPLIT:// DISPATCH
-                        if (comment_read) {
-                            comments.add(comment.toString());
-                            break; // nothing to do
-                        }
-
-                        if (value_read) {
-                            // APPEND KEY TO ID
-                            id.add(key.toString());
-
-                            // TODO: not efficient, make new methods in spec to make it way efficient
-                            IConfigField<?, ?> configField = spec.findField(Tools.concat(spec.name() + ":", ".", id.toArray(new String[0])));
-
-                            if (configField != null) {
-                                String v = value.toString();
-                                Object o = OmegaConfig.tryParse(v, configField.type(), configField.subType());
-
-                                configField.set0(o);
-                            } else {
-                                // TODO: must keep the line (if the dev wants)
-                            }
-                        } else { // key-read
-                            throw new RuntimeException("Broken");
-                        }
-
-                        // CLEANUP
-                        comment_read = false;
-                        value_read = false;
-                        id.clear();
-                        comments.clear();
-                        key = new StringBuilder();
-                        value = new StringBuilder();
-                        break;
-                    case FORMAT_KEY_GROUP_SPLIT: // SKIP TO NEXT GROUP
-                        if (!key.isEmpty() && !value_read && !comment_read) {
-                            id.add(key.toString());
-                            key = new StringBuilder();
-                            break;
-                        }
-                    case FORMAT_KEY_DEF_SPLIT:
-                        if (!comment_read && !value_read && !key.isEmpty()) {
-                            value_read = true;
-                            break;
-                        }
-                    case FORMAT_KEY_COMMENT_LINE: // SET READING-COMMENT STATE
-                        if (key.isEmpty() && value.isEmpty() && id.isEmpty()) {
-                            comment_read = true;
-                            break;
-                        }
-                    default:
-                        if (comment_read) {
-                            comment.append(bait);
-                        }
-                        ((value_read ? value : key)).append(bait);
-                        break;
-                }
+        @Override
+        public void close() throws IOException {
+            String data = this.data.toString();
+            if (data.endsWith(FORMAT_KEY_BREAKLINE.repeat(2))) {
+                data = data.substring(0, data.length() - FORMAT_KEY_BREAKLINE.length() * 2);
             }
-
-            return true;
-        } catch (Exception e) {
-
-            return false;
+            this.out.write(data);
+            this.out.close();
         }
-    }
-
-    @Override
-    public void release() {
-        OPEN_FILES.forEach((path, randomAccessFile) -> Tools.closeQuietly(randomAccessFile));
-        OPEN_FILES.clear();
     }
 }

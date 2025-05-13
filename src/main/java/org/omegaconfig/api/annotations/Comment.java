@@ -10,8 +10,8 @@ import java.lang.annotation.*;
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD, ElementType.TYPE})
-@Repeatable(FieldComment.Comments.class)
-public @interface FieldComment {
+@Repeatable(Comment.Comments.class)
+public @interface Comment {
     /**
      * Can be placed in one annotation as an array or using multiple ones.
      * Ordering is up-to-down
@@ -28,6 +28,6 @@ public @interface FieldComment {
     @Target({ElementType.FIELD, ElementType.TYPE})
     @Retention(RetentionPolicy.RUNTIME)
     @interface Comments {
-        FieldComment[] value();
+        Comment[] value();
     }
 }

@@ -10,7 +10,7 @@ import java.util.function.Predicate;
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
-public @interface ArrayConditions {
+public @interface ListConditions {
     /**
      * Makes serializer to sugar the output in a single-line string separated by commas for all entries <code>field="Entry1, Entry2"</code>
      * default behavior is serializing all entries as a javascript array <code>field=["Entry1", "Entry2"]</code>
@@ -21,9 +21,22 @@ public @interface ArrayConditions {
     /**
      * Makes serializer to output a single-line array instead of split all entries with a line break
      * @return singleline condition,
-     * <code>false</code> by default, option is ignored when {@link ArrayConditions#stringify()} is <code>true</code>.
+     * <code>false</code> by default, option is ignored when {@link ListConditions#stringify()} is <code>true</code>.
      */
     boolean singleline() default false;
+
+    /**
+     * Allows if the list can be empty
+     *
+     * @return non-empty conditional, <code>true</code> by default if the default value is NOT empty,
+     * otherwise <code>false</code> by default.
+     */
+    boolean allowEmpty() default true;
+
+    /**
+     * Allows if the list can contain null values
+     */
+    boolean unique() default false;
 
     /**
      * Specify a limit of entries in an array,

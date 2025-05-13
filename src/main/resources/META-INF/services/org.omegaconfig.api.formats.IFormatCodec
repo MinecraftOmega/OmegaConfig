@@ -1,0 +1,5 @@
+org.omegaconfig.impl.formats.TOMLFormat
+org.omegaconfig.impl.formats.CFGFormat
+org.omegaconfig.impl.formats.JSONFormat
+org.omegaconfig.impl.formats.JSON5Format
+org.omegaconfig.impl.formats.PROPFormat

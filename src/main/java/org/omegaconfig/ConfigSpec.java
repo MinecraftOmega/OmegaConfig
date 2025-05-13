@@ -1,20 +1,64 @@
 package org.omegaconfig;
 
 import org.omegaconfig.api.IConfigField;
+import org.omegaconfig.api.formats.IFormatCodec;
+import org.omegaconfig.api.formats.IFormatReader;
+import org.omegaconfig.api.formats.IFormatWriter;
 import org.omegaconfig.impl.fields.*;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Predicate;
+
+import static org.omegaconfig.OmegaConfigRegistry.FORMATS;
 
 public final class ConfigSpec extends ConfigGroup {
-    private final String format;
+    // NUMBER COMMENTS
+    private static final String COMMENT_ALLOWS_MATH = "Allows math expressions";
+    private static final String COMMENT_ALLOWS_MATH_STRICT = ", hard fails on invalid math expressions";
+    private static final String COMMENT_MUST_BE_IN_RANGE = "Value must be less than '%s' and greater than '%s'";
+    private static final String COMMENT_MUST_BE_LESS_THAN = "Value must be less than %s";
+    private static final String COMMENT_MUST_BE_GREATER_THAN = "Value must be greater than %s";
+
+    // STRING COMMENTS
+    private static final String COMMENT_ALLOW_EMPTY = "Allows (non-null) empty values";
+    private static final String COMMENT_DENY_EMPTY = "Must no be empty";
+    private static final String COMMENT_MUST_START_WITH = "Value must start with %s";
+    private static final String COMMENT_MUST_END_WITH = "Value must end with %s";
+    private static final String COMMENT_MUST_START_AND_END_WITH = "Value must start with %s and end with %s";
+    private static final String COMMENT_MUST_CONTAIN = "Value must contain %s";
+    private static final String COMMENT_MUST_NOT_CONTAIN = "Value must not contain %s";
+    private static final String COMMENT_MUST_EQUALS = "Value must match %s";
+    private static final String COMMENT_MUST_NOT_EQUALS = "Value must not match %s";
+    private static final String COMMENT_MUST_MATCH = "Value must match with %s";
+    private static final String COMMENT_MUST_NOT_MATCH = "Value must not match with %s";
+
+    // LIST COMMENTS
+    private static final String COMMENT_ARRAY_ALLOW_EMPTY = "Allows empty arrays";
+    private static final String COMMENT_ARRAY_DENY_EMPTY = "Must not be empty";
+    private static final String COMMENT_ARRAY_VALUES_MUST_BE_UNIQUE = "and values must be unique";
+    private static final String COMMENT_ARRAY_SIZE_MUST_BE_GREATER_THAN = "Array size must be greater %s";
+
+    // ENUM COMMENTS
+    private static final String COMMENT_ENUM_VALID_VALUES = "Accepted values are: %s";
+
+    // PATH COMMENTS
+    private static final String COMMENT_PATH_RUNTIME = "path must be a runtime path";
+    private static final String COMMENT_PATH_STATIC = "path must be a static path";
+    private static final String COMMENT_PATH_FILE_EXISTS = "File should exists";
+    private static final String COMMENT_PATH_HARD_FAIL = "Hard fail";
+    private static final String COMMENT_PATH_SOFT_FAIL = "Soft fail";
+
+    private final IFormatCodec format;
     private final String suffix;
     private final Path filePath;
     private final HashSet<IConfigField<?, ?>> dirtyFields = new LinkedHashSet<>();
     private final int backups;
     boolean dirty;
-    private ConfigSpec(String name, String format, String suffix, Path path, int backups) {
+
+    private ConfigSpec(String name, IFormatCodec format, String suffix, Path path, int backups) {
         super(name, null);
         this.format = format;
         this.suffix = suffix;
@@ -29,7 +73,8 @@ public final class ConfigSpec extends ConfigGroup {
     }
 
     public void markDirty(IConfigField<?, ?> field) {
-        if (field.spec() != this) throw new IllegalArgumentException("ConfigField requires to be updated by the intended spec");
+        if (field.spec() != this)
+            throw new IllegalArgumentException("ConfigField requires to be updated by the intended spec");
         this.dirtyFields.add(field);
     }
 
@@ -41,7 +86,7 @@ public final class ConfigSpec extends ConfigGroup {
         return this.filePath;
     }
 
-    String format() {
+    IFormatCodec format() {
         return this.format;
     }
 
@@ -53,15 +98,135 @@ public final class ConfigSpec extends ConfigGroup {
         return this.backups;
     }
 
+    void load() throws IOException {
+        IFormatReader reader = this.format.createReader(this.filePath);
+        this.load(this, reader);
+    }
+
+    private void load(ConfigGroup group, IFormatReader reader) {
+        for (IConfigField<?, ?> field: group.getFields()) {
+            if (field instanceof ConfigGroup g) {
+                reader.push(g.name());
+                this.load(g, reader);
+                reader.pop();
+                continue;
+            }
+
+            String value = reader.read(field.name());
+            if (value != null) {
+                field.set0(OmegaConfig.tryParse(value, field.type(), field.subType()));
+            }
+        }
+    }
+
+    void save() throws IOException {
+        IFormatWriter writer = this.format.createWritter(this.filePath);
+        this.save(this, writer);
+    }
+
+    private void save(ConfigGroup group, IFormatWriter writer) {
+        for (IConfigField<?, ?> field: group.getFields()) {
+            for (String c: field.comments()) {
+                writer.write(c);
+            }
+
+            if (field instanceof ConfigGroup g) {
+                writer.push(g.name());
+                this.save(g, writer);
+                writer.pop();
+                continue;
+            }
+
+            if (field instanceof BaseNumberField<?> numberField) {
+                // SET MATH ALLOW COMMENTS
+                if (numberField.math()) {
+                    writer.write(COMMENT_ALLOWS_MATH + (numberField.strictMath() ? COMMENT_ALLOWS_MATH_STRICT : ""));
+                }
+
+                // SET MIN/MAX VALUE COMMENTS
+                String min = numberField.minValueString();
+                String max = numberField.maxValueString();
+
+                if (min == null && max != null) {
+                    writer.write(String.format(COMMENT_MUST_BE_GREATER_THAN, max));
+                } else if (min != null && max == null) {
+                    writer.write(String.format(COMMENT_MUST_BE_LESS_THAN, min));
+                } else if (min != null) {
+                    writer.write(String.format(COMMENT_MUST_BE_IN_RANGE, min, max));
+                }
+            }
+
+            if (field instanceof StringField stringField) {
+                // SET STRING STARTWITH COMMENT
+                if (stringField.startsWith.isEmpty() && !stringField.endsWith.isEmpty()) {
+                    writer.write(String.format(COMMENT_MUST_END_WITH, stringField.endsWith));
+                } else if (!stringField.startsWith.isEmpty() && stringField.endsWith.isEmpty()) {
+                    writer.write(String.format(COMMENT_MUST_START_WITH, stringField.startsWith));
+                } else {
+                    writer.write(String.format(COMMENT_MUST_START_AND_END_WITH, stringField.startsWith, stringField.endsWith));
+                }
+
+                // SET STRING CONDITION AND MODE COMMENT
+                if (stringField.condition != null) {
+                    String comment = switch (stringField.mode) {
+                        case CONTAINS -> COMMENT_MUST_CONTAIN;
+                        case EQUALS -> COMMENT_MUST_EQUALS;
+                        case REGEX -> COMMENT_MUST_MATCH;
+                        case NOT_CONTAINS -> COMMENT_MUST_NOT_CONTAIN;
+                        case NOT_EQUALS -> COMMENT_MUST_NOT_EQUALS;
+                        case NOT_REGEX -> COMMENT_MUST_NOT_MATCH;
+                    };
+                    writer.write(String.format(comment, stringField.condition));
+                }
+
+                // SET STRING ALLOW EMPTY COMMENT
+                writer.write(stringField.allowEmpty ? COMMENT_ALLOW_EMPTY : COMMENT_DENY_EMPTY);
+            }
+
+            if (field instanceof ListField<?> listField) {
+                // SET LIST ALLOW EMPTY AND UNIQUE COMMENT
+                writer.write((listField.allowEmpty
+                        ? COMMENT_ARRAY_ALLOW_EMPTY
+                        : COMMENT_ARRAY_DENY_EMPTY)
+                        + (listField.unique ? " " + COMMENT_ARRAY_VALUES_MUST_BE_UNIQUE : "")
+                );
+
+                // SET LIST LIMIT COMMENT
+                writer.write(String.format(COMMENT_ARRAY_SIZE_MUST_BE_GREATER_THAN, listField.limit));
+            }
+
+            if (field instanceof EnumField<?> enumField) {
+                writer.write(String.format(COMMENT_ENUM_VALID_VALUES, Arrays.toString(enumField.type().getEnumConstants())));
+            }
+
+            if (field instanceof PathField pathField) {
+                writer.write(pathField.runtimePath ? COMMENT_PATH_RUNTIME : COMMENT_PATH_STATIC);
+                if (pathField.fileExists) {
+                    writer.write(COMMENT_PATH_FILE_EXISTS);
+                }
+            }
+
+            writer.write(field.name(), OmegaConfig.tryEncode(field.get(), field.subType()));
+        }
+    }
+
+
     public static final class SpecBuilder {
         private final ConfigSpec spec;
         private ConfigGroup active;
-        private final Set<String> comments = new LinkedHashSet<>();
-        private final Set<IConfigField<?, ?>> fields = new LinkedHashSet<>();
 
-        public SpecBuilder(String name, String format, String suffix, Path path, int backups) {
+        public SpecBuilder(String name, String format, String suffix, int backups) {
+            this(name, FORMATS.get(format), suffix, backups);
+        }
+
+        public SpecBuilder(String name, IFormatCodec format, String suffix, int backups) {
+            Path path = OmegaConfig.getPath().toAbsolutePath().resolve(name + (!suffix.isEmpty() ? ("-" + suffix) : "") + "." + format);
             this.spec = new ConfigSpec(name, format, suffix, path, backups);
             this.active = this.spec;
+        }
+
+        PathFieldBuilder definePath(String name, Field field, Object context) {
+            return new PathFieldBuilder(name, this.active, field, context);
         }
 
         <T> ListFieldBuilder<T> defineList(String name, Field field, Object context, Class<T> subType) {
@@ -112,6 +277,10 @@ public final class ConfigSpec extends ConfigGroup {
             return new CustomFieldBuilder<>(name, this.active, field, context);
         }
 
+        public PathFieldBuilder definePath(String name, Path defaultValue) {
+            return new PathFieldBuilder(name, this.active, defaultValue);
+        }
+
         public <T> ListFieldBuilder<T> defineList(String name, List<T> defaultValue, Class<T> subType) {
             return new ListFieldBuilder<>(name, this.active, defaultValue, subType);
         }
@@ -160,19 +329,21 @@ public final class ConfigSpec extends ConfigGroup {
             return new CustomFieldBuilder<>(name, this.active, defaultValue, type, subType);
         }
 
-        public SpecBuilder comment(String ...comment) {
-            this.comments.addAll(Arrays.asList(comment));
+        public SpecBuilder comments(String... comment) {
+            this.active.comments.addAll(Arrays.asList(comment));
             return this;
         }
 
         public SpecBuilder push(String name) {
-            for (String n: name.split("\\.")) {
+            for (String n : name.split("\\.")) {
                 this.active = new ConfigGroup(n, this.active);
             }
             return this;
         }
 
         public SpecBuilder pop() {
+            this.active.fields = Collections.unmodifiableSet(this.active.fields);
+            this.active.comments = Collections.unmodifiableSet(this.active.comments);
             this.active = this.active.group;
             return this;
         }
@@ -193,65 +364,117 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         public ConfigSpec build() {
-            this.spec.fields = Collections.unmodifiableSet(this.fields);
-            this.spec.comments = Collections.unmodifiableSet(this.comments);
+            this.spec.fields = Collections.unmodifiableSet(this.spec.fields);
+            this.spec.comments = Collections.unmodifiableSet(this.spec.comments);
             return spec;
         }
     }
 
     public static non-sealed class CustomFieldBuilder<T, S> extends BaseFieldBuilder<CustomFieldBuilder<T, S>, BaseConfigField<T, S>> {
-        private final String name;
-        private final ConfigGroup group;
         private final T defaultValue;
         private final Class<T> type;
         private final Class<S> subType;
 
         public CustomFieldBuilder(String name, ConfigGroup group, T defaultValue, Class<T> type, Class<S> subType) {
-            this.name = name;
-            this.group = group;
+            super(name, group);
             this.defaultValue = defaultValue;
             this.type = type;
             this.subType = subType;
         }
 
         public CustomFieldBuilder(String name, ConfigGroup group, Field field, Object context) {
-            this.name = name;
-            this.group = group;
+            super(name, group);
             this.defaultValue = null;
             this.field = field;
             this.context = context;
-            this.type = (Class<T>) Tools.getType(field);
-            this.subType = (Class<S>) Tools.getOneArgType(field);
+            this.type = (Class<T>) Tools.typeOf(field);
+            this.subType = (Class<S>) Tools.subTypeOf(field);
         }
 
         @Override
         public BaseConfigField<T, S> end() {
-            return new BaseConfigField<>(this.name, this.group, this.comments, this.defaultValue) {
+            if (field == null) {
+                return new BaseConfigField<>(this.name, this.group, this.comments, this.defaultValue) {
 
-                @Override
-                public Class<T> type() {
-                    return type;
-                }
+                    @Override
+                    public Class<T> type() {
+                        return type;
+                    }
 
-                @Override
-                public Class<S> subType() {
-                    return subType;
-                }
-            };
+                    @Override
+                    public Class<S> subType() {
+                        return subType;
+                    }
+                };
+            } else {
+                return new BaseConfigField<>(this.name, this.group, this.comments, this.field, this.context) {
+                    @Override
+                    public Class<T> type() {
+                        return type;
+                    }
+
+                    @Override
+                    public Class<S> subType() {
+                        return subType;
+                    }
+                };
+            }
+
         }
     }
 
+    public static final class PathFieldBuilder extends BaseFieldBuilder<PathFieldBuilder, PathField> {
+        private final Path defaultValue;
+        private boolean runtimePath = true;
+        private boolean fileExists = false;
+
+        private PathFieldBuilder(String name, ConfigGroup group, Path defaultValue) {
+            super(name, group);
+            this.defaultValue = defaultValue;
+        }
+
+        private PathFieldBuilder(String name, ConfigGroup group, Field field, Object context) {
+            this(name, group, null);
+            this.field = field;
+            this.context = context;
+        }
+
+        public PathFieldBuilder runtimePath(boolean runtimePath) {
+            this.runtimePath = runtimePath;
+            return this;
+        }
+
+        public PathFieldBuilder fileExists(boolean fileExists) {
+            this.fileExists = fileExists;
+            return this;
+        }
+
+        @Override
+        public PathField end() {
+            if (this.field == null) {
+                return new PathField(this.name, this.group, this.comments, this.runtimePath, this.fileExists, this.defaultValue);
+            } else {
+                return new PathField(this.name, this.group, this.comments, this.runtimePath, this.fileExists, this.field, this.context);
+            }
+        }
+    }
+
+    // MAP
+
     public static final class ListFieldBuilder<S> extends BaseFieldBuilder<ListFieldBuilder<S>, ListField<S>> {
-        private final String name;
-        private final ConfigGroup group;
-        private final List<S> defaultValue;
         private final Class<S> subType;
         private final Field field;
         private final Object context;
+        private final List<S> defaultValue;
+        private boolean stringify = false;
+        private boolean singleline = true;
+        private boolean allowEmpty = true;
+        private boolean unique = false;
+        private int limit = Integer.MAX_VALUE;
+        private Class<? extends Predicate<S>> filter;
 
         private ListFieldBuilder(String name, ConfigGroup group, List<S> defaultValue, Class<S> subType) {
-            this.name = name;
-            this.group = group;
+            super(name, group);
             this.defaultValue = defaultValue;
             this.subType = subType;
             this.field = null;
@@ -259,8 +482,7 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         private ListFieldBuilder(String name, ConfigGroup group, Field field, Object context, Class<S> subType) {
-            this.name = name;
-            this.group = group;
+            super(name, group);
             this.defaultValue = null;
             this.subType = subType;
             this.field = field;
@@ -272,24 +494,54 @@ public final class ConfigSpec extends ConfigGroup {
             return this;
         }
 
+        public ListFieldBuilder<S> stringify(boolean stringify) {
+            this.stringify = stringify;
+            return this;
+        }
+
+        public ListFieldBuilder<S> singleline(boolean singleline) {
+            this.singleline = singleline;
+            return this;
+        }
+
+        public ListFieldBuilder<S> allowEmpty(boolean allowEmpty) {
+            this.allowEmpty = allowEmpty;
+            return this;
+        }
+
+        public ListFieldBuilder<S> unique(boolean unique) {
+            this.unique = unique;
+            return this;
+        }
+
+        public ListFieldBuilder<S> limit(int limit) {
+            this.limit = limit;
+            return this;
+        }
+
+        public ListFieldBuilder<S> filter(Class<? extends Predicate<S>> filter) {
+            if (filter == null) {
+                throw new IllegalArgumentException("Filter cannot be null");
+            }
+            this.filter = filter;
+            return this;
+        }
+
         @Override
         public ListField<S> end() {
             if (this.field == null) {
-                return new ListField<>(this.name, this.group, this.comments, this.defaultValue, this.subType);
+                return new ListField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.defaultValue, this.subType);
             } else {
-                return new ListField<>(this.name, this.group, this.comments, this.subType, this.field, this.context);
+                return new ListField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.subType, this.field, this.context);
             }
         }
     }
 
     public static final class EnumFieldBuilder<T extends Enum<T>> extends BaseFieldBuilder<EnumFieldBuilder<T>, EnumField<T>> {
-        private final String name;
-        private final ConfigGroup group;
         private final T defaultValue;
 
         private EnumFieldBuilder(String name, ConfigGroup group, T defaultValue) {
-            this.name = name;
-            this.group = group;
+            super(name, group);
             this.defaultValue = defaultValue;
         }
 
@@ -309,14 +561,17 @@ public final class ConfigSpec extends ConfigGroup {
         }
     }
 
-    public static final class StringFieldBuilder extends BaseFieldBuilder<ShortFieldBuilder, StringField> {
-        private final String name;
-        private final ConfigGroup group;
+    public static final class StringFieldBuilder extends BaseFieldBuilder<StringFieldBuilder, StringField> {
         private final String defaultValue;
+        private String startsWith = "";
+        private String endsWith = "";
+        private boolean allowEmpty = true;
+        private String condition = "";
+        private int regexFlags = 0;
+        private StringField.Mode mode = StringField.Mode.CONTAINS;
 
         private StringFieldBuilder(String name, ConfigGroup group, String defaultValue) {
-            this.name = name;
-            this.group = group;
+            super(name, group);
             this.defaultValue = defaultValue;
         }
 
@@ -326,23 +581,51 @@ public final class ConfigSpec extends ConfigGroup {
             this.context = context;
         }
 
+        public StringFieldBuilder startsWith(String start) {
+            this.startsWith = start;
+            return this;
+        }
+
+        public StringFieldBuilder endsWith(String end) {
+            this.endsWith = end;
+            return this;
+        }
+
+        public StringFieldBuilder allowEmpty(boolean allowEmpty) {
+            this.allowEmpty = allowEmpty;
+            return this;
+        }
+
+        public StringFieldBuilder condition(String condition) {
+            this.condition = condition;
+            return this;
+        }
+
+        public StringFieldBuilder regexFlags(int regexFlags) {
+            this.regexFlags = regexFlags;
+            return this;
+        }
+
+        public StringFieldBuilder mode(StringField.Mode mode) {
+            this.mode = mode;
+            return this;
+        }
+
+        @Override
         public StringField end() {
             if (this.field == null) {
-                return new StringField(this.name, this.group, this.comments, this.defaultValue);
+                return new StringField(this.name, this.group, this.comments, this.startsWith, this.endsWith, this.allowEmpty, this.condition, this.regexFlags, this.mode, this.defaultValue);
             } else {
-                return new StringField(this.name, this.group, this.comments, this.field, this.context);
+                return new StringField(this.name, this.group, this.comments, this.startsWith, this.endsWith, this.allowEmpty, this.condition, this.regexFlags, this.mode, this.field, this.context);
             }
         }
     }
 
     public static final class BooleanFieldBuilder extends BaseFieldBuilder<BooleanFieldBuilder, BooleanField> {
-        private final String name;
-        private final ConfigGroup group;
         private final boolean defaultValue;
 
         private BooleanFieldBuilder(String name, ConfigGroup group, boolean defaultValue) {
-            this.name = name;
-            this.group = group;
+            super(name, group);
             this.defaultValue = defaultValue;
         }
 
@@ -352,6 +635,7 @@ public final class ConfigSpec extends ConfigGroup {
             this.context = context;
         }
 
+        @Override
         public BooleanField end() {
             if (this.field == null) {
                 return new BooleanField(this.name, this.group, this.comments, this.defaultValue);
@@ -362,13 +646,10 @@ public final class ConfigSpec extends ConfigGroup {
     }
 
     public static final class ByteFieldBuilder extends NumberFieldBuilder<Byte, ByteField, ByteFieldBuilder> {
-        private final String name;
-        private final ConfigGroup group;
         private final byte defaultValue;
 
         private ByteFieldBuilder(String name, ConfigGroup group, byte defaultValue) {
-            this.name = name;
-            this.group = group;
+            super(name, group);
             this.defaultValue = defaultValue;
             this.min = Byte.MIN_VALUE;
             this.max = Byte.MAX_VALUE;
@@ -391,13 +672,10 @@ public final class ConfigSpec extends ConfigGroup {
     }
 
     public static final class ShortFieldBuilder extends NumberFieldBuilder<Short, ShortField, ShortFieldBuilder> {
-        private final String name;
-        private final ConfigGroup group;
         private final short defaultValue;
 
         private ShortFieldBuilder(String name, ConfigGroup group, short defaultValue) {
-            this.name = name;
-            this.group = group;
+            super(name, group);
             this.defaultValue = defaultValue;
             this.min = Short.MIN_VALUE;
             this.max = Short.MAX_VALUE;
@@ -420,13 +698,10 @@ public final class ConfigSpec extends ConfigGroup {
     }
 
     public static final class CharFieldBuilder extends BaseFieldBuilder<CharFieldBuilder, CharField> {
-        private final String name;
-        private final ConfigGroup group;
         private final char defaultValue;
 
         private CharFieldBuilder(String name, ConfigGroup group, char defaultValue) {
-            this.name = name;
-            this.group = group;
+            super(name, group);
             this.defaultValue = defaultValue;
         }
 
@@ -447,13 +722,10 @@ public final class ConfigSpec extends ConfigGroup {
     }
 
     public static final class IntFieldBuilder extends NumberFieldBuilder<Integer, IntField, IntFieldBuilder> {
-        private final String name;
-        private final ConfigGroup group;
         private final int defaultValue;
 
         private IntFieldBuilder(String name, ConfigGroup group, int defaultValue) {
-            this.name = name;
-            this.group = group;
+            super(name, group);
             this.defaultValue = defaultValue;
             this.min = Integer.MIN_VALUE;
             this.max = Integer.MAX_VALUE;
@@ -476,13 +748,10 @@ public final class ConfigSpec extends ConfigGroup {
     }
 
     public static final class LongFieldBuilder extends NumberFieldBuilder<Long, LongField, LongFieldBuilder> {
-        private final String name;
-        private final ConfigGroup group;
         private final long defaultValue;
 
         private LongFieldBuilder(String name, ConfigGroup group, long defaultValue) {
-            this.name = name;
-            this.group = group;
+            super(name, group);
             this.defaultValue = defaultValue;
             this.min = Long.MIN_VALUE;
             this.max = Long.MAX_VALUE;
@@ -505,13 +774,10 @@ public final class ConfigSpec extends ConfigGroup {
     }
 
     public static final class FloatFieldBuilder extends NumberFieldBuilder<Float, FloatField, FloatFieldBuilder> {
-        private final String name;
-        private final ConfigGroup group;
         private final float defaultValue;
 
         private FloatFieldBuilder(String name, ConfigGroup group, float defaultValue) {
-            this.name = name;
-            this.group = group;
+            super(name, group);
             this.defaultValue = defaultValue;
             this.min = Float.MIN_VALUE;
             this.max = Float.MAX_VALUE;
@@ -534,13 +800,10 @@ public final class ConfigSpec extends ConfigGroup {
     }
 
     public static final class DoubleFieldBuilder extends NumberFieldBuilder<Double, DoubleField, DoubleFieldBuilder> {
-        private final String name;
-        private final ConfigGroup group;
         private final double defaultValue;
 
         private DoubleFieldBuilder(String name, ConfigGroup group, double defaultValue) {
-            this.name = name;
-            this.group = group;
+            super(name, group);
             this.defaultValue = defaultValue;
             this.min = Double.MIN_VALUE;
             this.max = Double.MAX_VALUE;
@@ -563,15 +826,18 @@ public final class ConfigSpec extends ConfigGroup {
     }
 
     /**
-     *
      * @param <T>
      * @param <B> builder which extends
      */
-    public static abstract sealed class NumberFieldBuilder<T extends Number, F extends NumberField<T>, B extends NumberFieldBuilder<T, F, B>> extends BaseFieldBuilder<B, F> {
+    public static abstract sealed class NumberFieldBuilder<T extends Number, F extends BaseNumberField<T>, B extends NumberFieldBuilder<T, F, B>> extends BaseFieldBuilder<B, F> {
         protected boolean strictMath = false;
         protected boolean math = false;
         protected T min;
         protected T max;
+
+        protected NumberFieldBuilder(String name, ConfigGroup group) {
+            super(name, group);
+        }
 
         public B setMin(T min) {
             this.min = min;
@@ -598,11 +864,18 @@ public final class ConfigSpec extends ConfigGroup {
     }
 
     public static abstract sealed class BaseFieldBuilder<B extends BaseFieldBuilder<B, ?>, F extends IConfigField<?, ?>> {
+        protected final String name;
+        protected final ConfigGroup group;
         protected final Set<String> comments = new LinkedHashSet<>();
         protected Field field;
         protected Object context;
 
-        public B comments(String ...comments) {
+        protected BaseFieldBuilder(String name, ConfigGroup group) {
+            this.name = name;
+            this.group = group;
+        }
+
+        public B comments(String... comments) {
             this.comments.addAll(Arrays.asList(comments));
             return (B) this;
         }
