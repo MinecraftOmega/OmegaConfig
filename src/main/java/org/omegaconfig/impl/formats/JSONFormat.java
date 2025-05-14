@@ -1,12 +1,12 @@
 package org.omegaconfig.impl.formats;
 
 import org.omegaconfig.OmegaConfig;
+import org.omegaconfig.Tools;
 import org.omegaconfig.api.formats.IFormatReader;
 import org.omegaconfig.api.formats.IFormatWriter;
 import org.omegaconfig.api.formats.IFormatCodec;
 
 import java.io.*;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
@@ -24,7 +24,7 @@ public class JSONFormat implements IFormatCodec {
 
     @Override
     public IFormatReader createReader(Path filePath) throws IOException {
-
+        return new FormatReader(filePath);
     }
 
     @Override
@@ -32,52 +32,138 @@ public class JSONFormat implements IFormatCodec {
         return null;
     }
 
-    private static class NewFormatReader implements IFormatReader {
-        private final LinkedHashMap<String, String> values = new LinkedHashMap<>();
+    public static class FormatReader implements IFormatReader {
+        public final LinkedHashMap<String, String> values = new LinkedHashMap<>();
 
-
-        public NewFormatReader(Path path) throws IOException {
+        public FormatReader(Path path) throws IOException {
             // READ JSON STRING
             var in = new FileInputStream(path.toFile());
             char[] data = new String(in.readAllBytes()).toCharArray();
             in.close();
 
-            char expected = JSON_OBJECT_START;
+            char[] expected = new char[] { JSON_OBJECT_START };
+            char[] permissive = new char[0];
             boolean escaped = false;
             boolean keyCapture = false;
             boolean valueCapture = false;
+            boolean valueWhiteCapture = false;
+            boolean finished = false;
             final LinkedHashSet<String> group = new LinkedHashSet<>();
             StringBuilder key = new StringBuilder();
             StringBuilder value =new StringBuilder();
 
-            for (int i = 0; i < data.length; i++) {
-                char c = data[i];
+            for (char c: data) {
+                if (Character.isWhitespace(c) && !keyCapture && !valueCapture) continue;
 
-                if (c != expected) {
-                    throw new IllegalArgumentException("Expected char " + expected + " but received " + c);
+                if (finished && group.isEmpty())
+                    throw new IllegalStateException("JSON object finished reading but still contains data");
+
+                if (!Tools.contains(c, expected) && !valueCapture && !keyCapture) {
+                    if (Tools.contains(c, permissive)) {
+                        throw new IllegalArgumentException("Expected char(s) " + Arrays.toString(expected) + " but received " + c);
+                    }
+                    throw new IllegalArgumentException("Expected char(s) " + Arrays.toString(expected) + " but received " + c);
                 }
 
                 switch (c) {
                     case JSON_OBJECT_START -> {
-                        if (!key.isEmpty()) {
+                        if (!key.isEmpty() && valueCapture) {
                             group.add(key.toString());
                             key = new StringBuilder();
                         }
-                        expected = JSON_STRING_LINE;
+                        expected = new char[]{JSON_STRING_LINE, JSON_OBJECT_END}; // key start or object end
+                        continue;
                     }
 
                     case JSON_STRING_LINE -> {
+                        if (escaped) {
+                            escaped = false;
+                            break; // BREAKS THE SWITCH AND JUMP TO STORAGE
+                        }
+
                         if (keyCapture) {
-                            key.append(c);
+                            keyCapture = false;
+                            valueCapture = false;
+                            expected = new char[]{JSON_ENTRY_SPLIT};
+                            continue;
                         }
+
+                        // FIXME: must accept empty values
+                        if (valueCapture && !value.isEmpty()) {
+                            valueCapture = false;
+                            keyCapture = false;
+                            expected = new char[]{JSON_CONTINUE, JSON_OBJECT_END};
+                            values.put(Tools.concat("", key.toString(), '.', group), value.toString());
+                            key = new StringBuilder();
+                            value = new StringBuilder();
+                            continue;
+                        }
+
                         if (valueCapture) {
-                            value.append(c);
+                            continue; // skip char storage
                         }
+
+                        keyCapture = true;
+                        valueCapture = false;
+                        expected = new char[0];
+                        continue;
+                    }
+
+                    case JSON_ENTRY_SPLIT -> {
+                        if (keyCapture || valueCapture) {
+                            continue; // IF WE ARE ALREADY CAPTURING THEN ITS PART OF THE VALUE
+                        }
+                        valueCapture = false;
+                        keyCapture = false;
+                        expected = new char[]{JSON_STRING_LINE, JSON_OBJECT_START, ' '};
+                        continue;
+                    }
+
+                    case JSON_CONTINUE -> {
+                        // TODO: here we are not supposted to accept empty values
+                        if (valueCapture && !value.isEmpty()) {
+                            valueCapture = false;
+                            keyCapture = false;
+                            expected = new char[]{JSON_CONTINUE, JSON_OBJECT_END};
+                            values.put(Tools.concat("", key.toString(), '.', group), value.toString());
+                            key = new StringBuilder();
+                            value = new StringBuilder();
+                            continue;
+                        }
+                        expected = new char[]{JSON_STRING_LINE};
+                        permissive = new char[]{JSON_OBJECT_END};
+                        continue;
+                    }
+
+                    case JSON_ESCAPED -> {
+                        if (valueCapture || keyCapture) {
+                            escaped = true;
+                            continue;
+                        }
+
+                        throw new IllegalStateException("You cannot escape " + c);
+                    }
+
+                    case JSON_OBJECT_END -> {
+                        if (group.isEmpty()) {
+                            finished = true;
+                        }
+                        continue;
                     }
                 }
+
+                if (keyCapture && valueCapture)
+                    throw new IllegalStateException("Cannot capture key and value at the same time");
+
+                if (keyCapture) {
+                    key.append(c);
+                    continue;
+                }
+
+                if (valueCapture) {
+                    value.append(c);
+                }
             }
-
-
         }
 
         @Override
@@ -98,68 +184,6 @@ public class JSONFormat implements IFormatCodec {
         @Override
         public void close() throws IOException {
 
-        }
-    }
-
-    private static class FormatReader implements IFormatReader {
-        private final Map<String, String> entries = new HashMap<>();
-        private final Set<String> groups = new LinkedHashSet<>();
-        private static final char GROUP_SEPARATOR = '.';
-
-        public FormatReader(Path path) throws IOException {
-
-        }
-
-        private void addEntry(String key, String value) {
-            key = removeQuotes(key);
-            value = removeQuotes(value);
-
-            // Handle JSON primitive types
-            if (value.equals("true") || value.equals("false")) {
-                entries.put(key, value);
-            } else if (value.equals("null")) {
-                entries.put(key, null);
-            } else if (value.matches("-?\\d+(\\.\\d+)?")) { // Numbers
-                entries.put(key, value);
-            } else {
-                entries.put(key, value);
-            }
-        }
-
-        private String removeQuotes(String str) {
-            if (str.startsWith("\"") && str.endsWith("\"")) {
-                return str.substring(1, str.length() - 1);
-            }
-            return str;
-        }
-
-        @Override
-        public String read(String fieldName) {
-            StringBuilder groupPath = new StringBuilder();
-            for (String group : groups) {
-                groupPath.append(group).append(GROUP_SEPARATOR);
-            }
-            groupPath.append(fieldName);
-            return entries.get(groupPath.toString());
-        }
-
-        @Override
-        public void push(String group) {
-            groups.add(group);
-        }
-
-        @Override
-        public void pop() {
-            if (!groups.isEmpty()) {
-                String[] array = groups.toArray(new String[0]);
-                groups.remove(array[array.length - 1]);
-            }
-        }
-
-        @Override
-        public void close() {
-            this.entries.clear();
-            this.groups.clear();
         }
     }
 }

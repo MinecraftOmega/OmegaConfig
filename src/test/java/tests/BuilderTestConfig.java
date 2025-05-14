@@ -1,6 +1,7 @@
 package tests;
 
 import org.omegaconfig.ConfigSpec;
+import org.omegaconfig.OmegaConfig;
 import org.omegaconfig.impl.fields.IntField;
 import org.omegaconfig.impl.fields.StringField;
 

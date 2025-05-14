@@ -177,4 +177,10 @@ public class Tools {
     }
 
 
+    public static boolean contains(char c, char[] expected) {
+        for (char e: expected) {
+            if (c == e) return true;
+        }
+        return false;
+    }
 }

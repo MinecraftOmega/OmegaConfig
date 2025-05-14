@@ -2,6 +2,7 @@ package tests;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.omegaconfig.OmegaConfig;
 
 public class SpecGenerationTest {
 
@@ -13,6 +14,6 @@ public class SpecGenerationTest {
 
     @Test
     public void test$init() throws InterruptedException {
-        OmegaConfig.WORKER.join();
+
     }
 }

@@ -1,5 +1,7 @@
 package org.omegaconfig.api.annotations;
 
+import org.omegaconfig.OmegaConfig;
+
 import java.lang.annotation.*;
 
 /**
