@@ -5,33 +5,22 @@ import org.omegaconfig.api.formats.IFormatReader;
 import org.omegaconfig.api.formats.IFormatWriter;
 import org.omegaconfig.api.formats.IFormatCodec;
 
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class JSONFormat implements IFormatCodec {
-    public JSONFormat() {
+    private static final char JSON_OBJECT_START = '{';
+    private static final char JSON_OBJECT_END = '}';
+    private static final char JSON_CONTINUE = ',';
+    private static final char JSON_STRING_LINE = '"';
+    private static final char JSON_ENTRY_SPLIT = ':';
+    private static final char JSON_ESCAPED = '\\';
 
-    }
-
-    @Override
-    public String id() {
-        return OmegaConfig.FORMAT_JSON;
-    }
-
-    @Override
-    public String extension() {
-        return "." + id();
-    }
-
-    @Override
-    public String mimeType() {
-        return "application/json";
-    }
+    @Override public String id() { return OmegaConfig.FORMAT_JSON; }
+    @Override public String extension() { return "." + id(); }
+    @Override public String mimeType() { return "application/json"; }
 
     @Override
     public IFormatReader createReader(Path filePath) throws IOException {
@@ -43,7 +32,73 @@ public class JSONFormat implements IFormatCodec {
         return null;
     }
 
-    private static class CharSpect {
+    private static class NewFormatReader implements IFormatReader {
+        private final LinkedHashMap<String, String> values = new LinkedHashMap<>();
+
+
+        public NewFormatReader(Path path) throws IOException {
+            // READ JSON STRING
+            var in = new FileInputStream(path.toFile());
+            char[] data = new String(in.readAllBytes()).toCharArray();
+            in.close();
+
+            char expected = JSON_OBJECT_START;
+            boolean escaped = false;
+            boolean keyCapture = false;
+            boolean valueCapture = false;
+            final LinkedHashSet<String> group = new LinkedHashSet<>();
+            StringBuilder key = new StringBuilder();
+            StringBuilder value =new StringBuilder();
+
+            for (int i = 0; i < data.length; i++) {
+                char c = data[i];
+
+                if (c != expected) {
+                    throw new IllegalArgumentException("Expected char " + expected + " but received " + c);
+                }
+
+                switch (c) {
+                    case JSON_OBJECT_START -> {
+                        if (!key.isEmpty()) {
+                            group.add(key.toString());
+                            key = new StringBuilder();
+                        }
+                        expected = JSON_STRING_LINE;
+                    }
+
+                    case JSON_STRING_LINE -> {
+                        if (keyCapture) {
+                            key.append(c);
+                        }
+                        if (valueCapture) {
+                            value.append(c);
+                        }
+                    }
+                }
+            }
+
+
+        }
+
+        @Override
+        public String read(String fieldName) {
+            return "";
+        }
+
+        @Override
+        public void push(String group) {
+
+        }
+
+        @Override
+        public void pop() {
+
+        }
+
+        @Override
+        public void close() throws IOException {
+
+        }
     }
 
     private static class FormatReader implements IFormatReader {
