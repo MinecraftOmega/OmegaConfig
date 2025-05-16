@@ -137,7 +137,7 @@ public class JSONFormat implements IFormatCodec {
                         if (capturing.string()) {
                             break;
                         }
-                        capturing = CapturingMode.ARRAY_PRIMITIVE_VALUE;
+                        capturing = CapturingMode.ARRAY;
                         continue;
                     }
 
@@ -147,15 +147,24 @@ public class JSONFormat implements IFormatCodec {
                             break;
                         }
 
-                        if (capturing == CapturingMode.ARRAY_PRIMITIVE_VALUE) {
+                        if (capturing == CapturingMode.ARRAY_STRING_VALUE) {
+                            capturing = CapturingMode.ARRAY;
+                            valueArray.add(value.toString());
+                            value = new StringBuilder();
+                            nextChars = new NextChar(new char[] { JSON_CONTINUE, JSON_ARRAY_END }, null);
+                            continue;
+                        }
+
+                        if (capturing == CapturingMode.ARRAY) {
                             capturing = CapturingMode.ARRAY_STRING_VALUE;
+                            nextChars = null;
                             continue;
                         }
 
                         // FINISHED CAPTURING
                         if (capturing == CapturingMode.STRING_VALUE) {
                             capturing = CapturingMode.NONE;
-                            values.put(Tools.concat("", key.toString(), '.', group), value.toString());
+                            values.put(Tools.concat("", (!group.isEmpty() ? "." : "") + key, '.', group), value.toString());
                             key = new StringBuilder();
                             value = new StringBuilder();
 
@@ -202,10 +211,15 @@ public class JSONFormat implements IFormatCodec {
                             break;
                         }
                         if (capturing == CapturingMode.PRIMITIVE_VALUE) {
-                            values.put(Tools.concat("", key.toString(), '.', group), value.toString());
+                            values.put(Tools.concat("", (!group.isEmpty() ? "." : "") + key.toString(), '.', group), value.toString());
                             capturing = CapturingMode.NONE;
                             key = new StringBuilder();
                             value = new StringBuilder();
+                        }
+
+                        if (capturing == CapturingMode.ARRAY || capturing == CapturingMode.ARRAY_PRIMITIVE_VALUE) {
+                            nextChars = new NextChar(new char[] { JSON_STRING_LINE }, null);
+                            continue;
                         }
 
                         nextChars = new NextChar(new char[] { JSON_STRING_LINE, JSON_OBJECT_END }, null);
@@ -223,12 +237,27 @@ public class JSONFormat implements IFormatCodec {
                         nextChars = new NextChar(new char[]{ JSON_CONTINUE, JSON_OBJECT_END }, null);
                         continue;
                     }
+
+                    case JSON_ARRAY_END -> {
+                        if (capturing == CapturingMode.ARRAY) {
+                            capturing = CapturingMode.NONE;
+                            nextChars = new NextChar(new char[]{ JSON_CONTINUE, JSON_OBJECT_END }, null);
+                            values.put(Tools.concat("", (!group.isEmpty() ? "." : "") + key, '.', group), Arrays.toString(valueArray.toArray(new String[0])));
+                            valueArray.clear();
+                            value = new StringBuilder();
+                            key = new StringBuilder();
+
+                            continue;
+                        }
+                        throw new IllegalStateException("JSON array end detected but not capturing an array");
+                    }
                 }
 
                 // OR BY DEFAULT, CAPTURE
                 switch (capturing) {
                     case KEY -> key.append(c);
                     case STRING_VALUE, PRIMITIVE_VALUE -> value.append(c);
+                    case ARRAY_STRING_VALUE, ARRAY_PRIMITIVE_VALUE -> value.append(c);
                     case NONE -> throw new IllegalStateException("Not capturing values");
                 }
 
