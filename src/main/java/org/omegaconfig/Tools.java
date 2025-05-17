@@ -4,6 +4,7 @@ import org.omegaconfig.api.annotations.Spec;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.TypeVariable;
 import java.util.Arrays;
@@ -66,6 +67,10 @@ public class Tools {
         throw new IllegalArgumentException("Class has more than 2 type arguments");
     }
 
+    public static String concat(String prefix, String suffix, char key, String... strings) {
+        return concat(prefix, suffix, key, Arrays.asList(strings));
+    }
+
     public static String concat(String prefix, String suffix, char key, Collection<String> strings) {
         StringBuilder result = new StringBuilder((strings.size() * 8) + 16);
         result.append(prefix);
@@ -80,8 +85,12 @@ public class Tools {
         return result.toString();
     }
 
-    public static String concat(String prefix, String suffix, char key, String... strings) {
-        return concat(prefix, suffix, key, Arrays.asList(strings));
+    public static byte[] readAllBytes(InputStream in) throws IOException {
+        try {
+            return in.readAllBytes();
+        } finally {
+            in.close();
+        }
     }
 
     public static void closeQuietly(Closeable in) {
