@@ -2,8 +2,8 @@
   "first_key": "value of first key",
   "second key": "value of second key",
   "third \n escaped key": "value of third key with escaped \n value",
-  "fourth_number_key": 45,
-  "fifth_boolean":  true,
+  "fourth_number_key": 40 + 5,
+  "fifth_boolean":  !true,
   "six_with_json": {
     "value_one": "one",
     "value_two": "2",
@@ -14,6 +14,9 @@
   "seven array": [
     "KEY ONE",
     "KEY TWO"
+  ],
+  "eight_array": [
+    1, 2, 3+89
   ],
   "broken_key": "false"
 }

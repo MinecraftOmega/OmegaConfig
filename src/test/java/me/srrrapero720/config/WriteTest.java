@@ -1,6 +1,5 @@
 package me.srrrapero720.config;
 
-import org.omegaconfig.api.formats.IFormatReader;
 import org.omegaconfig.impl.formats.JSONFormat;
 
 import java.io.File;
@@ -10,7 +9,7 @@ public class WriteTest {
 
 
     public static void main(String... args) throws IOException {
-        JSONFormat.AnotherFormatReader reader = (JSONFormat.AnotherFormatReader) new JSONFormat().createReader(new File("test-json.json").toPath());
+        JSONFormat.FormatReader reader = (JSONFormat.FormatReader) new JSONFormat().createReader(new File("test-json.json").toPath());
 
         reader.values.forEach((k, v) -> {
             System.out.println(k + "=" + v);
