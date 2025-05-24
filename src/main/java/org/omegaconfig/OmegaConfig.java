@@ -28,13 +28,15 @@ public class OmegaConfig {
     public static Path getPath() { return CONFIG_PATH; }
     public static void setPath(Path configPath) { CONFIG_PATH = configPath; }
 
-    public static void register(ConfigSpec spec) {
+    public static ConfigSpec register(ConfigSpec spec) {
         synchronized (SPECS) {
             SPECS.put(spec.name(), spec);
         }
+
+        return spec;
     }
 
-    public static void register(Class<?> clazz) {
+    public static ConfigSpec register(Class<?> clazz) {
         Objects.requireNonNull(clazz, "Spec class cannot be null");
 
         // RETRIEVE ANNOTATION
@@ -45,16 +47,15 @@ public class OmegaConfig {
         register$iterateClass(clazz, clazz, builder, true);
 
         // PUT ON OUR REGISTER
-        register(builder.build());
+        return register(builder.build());
     }
 
-    public static void register(Object instance) {
+    public static ConfigSpec register(Object instance) {
         Objects.requireNonNull(instance, "Spec instance cannot be null");
 
         // RETRIEVE ANNOTATION
         if (instance instanceof Class<?> clazz) {
-            register(clazz);
-            return;
+            return register(clazz);
         }
         final Class<?> specClass = instance.getClass();
         final Spec spec = Tools.specOf(specClass);
@@ -66,7 +67,7 @@ public class OmegaConfig {
         register$iterateClass(instance, specClass, builder, false);
 
         // PUT ON OUR REGISTER
-        register(builder.build());
+        return register(builder.build());
     }
 
     private static void register$iterateClass(Object instance, Class<?> specClass, ConfigSpec.SpecBuilder builder, boolean isStatic) {

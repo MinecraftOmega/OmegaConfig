@@ -119,7 +119,7 @@ public final class ConfigSpec extends ConfigGroup {
         }
     }
 
-    void save() throws IOException {
+    public void save() throws IOException {
         IFormatWriter writer = this.format.createWritter(this.filePath);
         this.save(this, writer);
     }
@@ -204,6 +204,10 @@ public final class ConfigSpec extends ConfigGroup {
                 if (pathField.fileExists) {
                     writer.write(COMMENT_PATH_FILE_EXISTS);
                 }
+            }
+
+            if (field instanceof ListField<?> listField) {
+                writer.write(field.name(), listField.get().toArray());
             }
 
             writer.write(field.name(), OmegaConfig.tryEncode(field.get(), field.subType()));

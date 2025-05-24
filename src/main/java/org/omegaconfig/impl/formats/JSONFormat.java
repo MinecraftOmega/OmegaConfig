@@ -7,6 +7,7 @@ import org.omegaconfig.api.formats.IFormatWriter;
 import org.omegaconfig.api.formats.IFormatCodec;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 
@@ -31,61 +32,150 @@ public class JSONFormat implements IFormatCodec {
 
     @Override
     public IFormatWriter createWritter(Path filePath) throws IOException {
-        return null;
+        return new FormatWriter(filePath);
     }
 
-    private record NextChar(char[] expected, char[] allowed) {
+    public static class FormatWriter implements IFormatWriter {
+        private final Stack<String> group = new Stack<>();
+        private final BufferedWriter writer;
+        private final StringBuilder buffer = new StringBuilder();
+        private boolean beginned = false;
 
-        public boolean isExpected(char c) {
-            return Tools.contains(c, expected);
+        public FormatWriter(Path path) throws IOException {
+            // TODO: safe maker
+            if (!path.toFile().getParentFile().mkdirs()) {
+                throw new IOException("Failed to create parent directories for " + path);
+            }
+            this.writer = new BufferedWriter(new FileWriter(path.toFile(), StandardCharsets.UTF_8));
+            this.buffer.append(JSON_OBJECT_START);
+            this.buffer.append("\n");
         }
 
-        public boolean isAllowed(char c) {
-            if (allowed == null) return false;
-            return Tools.contains(c, allowed);
-        }
-    }
-
-    public enum CapturingMode {
-        NONE,
-        KEY,
-        PRIMITIVE_VALUE,
-        STRING_VALUE,
-        ARRAY,
-        ARRAY_STRING_VALUE;
-
-        public boolean value() {
-            return this == PRIMITIVE_VALUE || this == STRING_VALUE;
+        @Override
+        public void write(String comment) {
+            // NO-OP
         }
 
-        public boolean string() {
-            return this == STRING_VALUE || this == KEY;
+        @Override
+        public void write(String fieldName, String value, Class<?> type, Class<?> subType) {
+            if (this.beginned) {
+                this.buffer.append(JSON_CONTINUE);
+            } else {
+                this.beginned = true;
+            }
+
+            boolean isString = (!type.isAssignableFrom(Number.class) && !type.isAssignableFrom(Boolean.class));
+            // WRITE SPACES
+            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append(JSON_STRING_LINE);
+            this.buffer.append(fieldName);
+            this.buffer.append(JSON_STRING_LINE);
+            this.buffer.append(JSON_ENTRY_SPLIT);
+            this.buffer.append(" ");
+            if (isString) {
+                this.buffer.append(JSON_STRING_LINE);
+            }
+            this.buffer.append(value);
+            if (isString) {
+                this.buffer.append(JSON_STRING_LINE);
+            }
+            this.buffer.append("\n");
+        }
+
+        @Override
+        public void write(String fieldName, String[] values, Class<?> type, Class<?> subType) {
+            boolean isString = (!subType.isAssignableFrom(Number.class) && !subType.isAssignableFrom(Boolean.class));
+
+            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append(JSON_STRING_LINE);
+            this.buffer.append(fieldName);
+            this.buffer.append(JSON_STRING_LINE);
+            this.buffer.append(JSON_ENTRY_SPLIT);
+            this.buffer.append(" ");
+            this.buffer.append(JSON_ARRAY_START);
+            this.buffer.append("\n");
+            Iterator<String> it = List.of(values).iterator();
+
+            while (it.hasNext()) {
+                String value = it.next();
+                this.buffer.append("\t".repeat(this.group.size() + 2));
+                if (isString) {
+                    this.buffer.append(JSON_STRING_LINE);
+                }
+                this.buffer.append(value);
+                if (isString) {
+                    this.buffer.append(JSON_STRING_LINE);
+                }
+                if (it.hasNext()) {
+                    this.buffer.append(JSON_CONTINUE);
+                }
+                this.buffer.append("\n");
+            }
+        }
+
+        @Override
+        public void push(String groupName) {
+            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append(JSON_STRING_LINE);
+            this.buffer.append(groupName);
+            this.buffer.append(JSON_STRING_LINE);
+            this.buffer.append(JSON_ENTRY_SPLIT);
+            this.buffer.append(" ");
+            this.buffer.append(JSON_OBJECT_START);
+            this.buffer.append("\n");
+            this.group.push(groupName);
+        }
+
+        @Override
+        public void pop() {
+            this.group.pop();
+            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append(JSON_OBJECT_END);
+            this.buffer.append("\n");
+        }
+
+        @Override
+        public void close() throws IOException {
+            this.writer.write(JSON_OBJECT_END);
+            this.writer.flush();
+            this.writer.close();
         }
     }
 
     public static class FormatReader implements IFormatReader {
+        public static final char[] START_CHARS = new char[] { JSON_OBJECT_START };
+        public static final char[] KEY_OR_END = new char[] { JSON_STRING_LINE, JSON_OBJECT_END };
+        public static final char[] CONTINUE_OR_END = new char[] { JSON_CONTINUE, JSON_OBJECT_END };
+        public static final char[] CONTINUE_OR_ARRAY_END = new char[] { JSON_CONTINUE, JSON_ARRAY_END };
+        public static final char[] SPLIT = new char[] { JSON_ENTRY_SPLIT };
+
+        public static final int NONE = 0;
+        public static final int KEY = 1;
+        public static final int VALUE = 2;
+        public static final int VALUE_STRING = 3;
+        public static final int ARRAY = 4;
+        public static final int ARRAY_STRING = 5;
         public final LinkedHashMap<String, String> values = new LinkedHashMap<>();
+        public final Stack<String> group = new Stack<>();
+        public final StringBuilder key = new StringBuilder();
+        public final StringBuilder value = new StringBuilder();
+        public final List<String> arrayValues = new ArrayList<>();
+        public boolean escaped;
+        public boolean finished = false;
 
         public FormatReader(Path path) throws IOException {
             // READ JSON STRING
-            var in = new FileInputStream(path.toFile());
-            char[] data = new String(in.readAllBytes()).toCharArray();
-            in.close();
+            char[] data = new String(Tools.readAllBytes(path), StandardCharsets.UTF_8).toCharArray();
 
-            NextChar nextChars = new NextChar(new char[] { JSON_OBJECT_START }, null);
-            CapturingMode capturing = CapturingMode.NONE;
-            final LinkedHashSet<String> group = new LinkedHashSet<>();
-            StringBuilder key = new StringBuilder();
-            StringBuilder value = new StringBuilder();
-            List<String> valueArray = new ArrayList<>();
-            boolean escaped = false;
-            boolean finished = false;
+            // READING STATES
+            char[] nexts = START_CHARS;
+            int capturing = NONE;
 
             for (char c: data) {
                 boolean whitespace = Character.isWhitespace(c);
 
                 // SKIP WHITESPACE PROCESING WHEN IS NOT CAPTURING NON-STRING-VALUES
-                if (whitespace && (capturing != CapturingMode.STRING_VALUE && capturing != CapturingMode.KEY && capturing != CapturingMode.ARRAY_STRING_VALUE) || (capturing == CapturingMode.ARRAY_STRING_VALUE && nextChars != null))
+                if (whitespace && (capturing != VALUE_STRING && capturing != KEY && capturing != ARRAY_STRING) || (capturing == ARRAY_STRING && nexts != null))
                     continue;
 
                 // THROW WHEN JSON SPEC IS FINISHED BUT STILL CONTAINS DATA (WTF)
@@ -94,81 +184,72 @@ public class JSONFormat implements IFormatCodec {
                 }
 
                 // VALIDATE CHARS
-                if (nextChars != null && !nextChars.isExpected(c)) {
-                    if (nextChars.isAllowed(c)) {
-                        // TODO: handle permisive chars
-                    }
-
-                    throw new IllegalStateException("Expected char(s) " + Arrays.toString(nextChars.expected) + " but received " + c);
+                if (nexts != null && !Tools.contains(c, nexts)) {
+                    throw new IllegalStateException("Expected char(s) " + Arrays.toString(nexts) + " but received " + c);
                 }
 
                 // CHAR DETECTION
                 switch (c) {
                     case JSON_OBJECT_START -> {
-                        if (capturing == CapturingMode.PRIMITIVE_VALUE) {
-                            group.add(key.toString());
-                            key = new StringBuilder();
-                            capturing = CapturingMode.NONE;
+                        if (capturing == VALUE) {
+                            this.pushGroup();
+                            capturing = NONE;
                         }
 
-                        nextChars = new NextChar(new char[] { JSON_STRING_LINE, JSON_OBJECT_END }, null);
+                        nexts = KEY_OR_END;
                         continue;
                     }
 
                     case JSON_ARRAY_START -> {
-                        if (capturing.string()) {
+                        if (capturing == KEY || capturing == VALUE_STRING) {
                             break;
                         }
-                        capturing = CapturingMode.ARRAY;
+                        capturing = ARRAY;
                         continue;
                     }
 
                     case JSON_STRING_LINE -> {
                         // IF IS CAPTURING AND KEY IS ESCAPED THEN SKIP PROCESING
-                        if (escaped && (capturing == CapturingMode.KEY || capturing == CapturingMode.STRING_VALUE)) {
+                        if (this.escaped && (capturing == KEY || capturing == VALUE_STRING)) {
                             break;
                         }
 
-                        if (capturing == CapturingMode.ARRAY_STRING_VALUE) {
-                            valueArray.add(value.toString());
-                            value = new StringBuilder();
-                            nextChars = new NextChar(new char[] { JSON_CONTINUE, JSON_ARRAY_END }, null);
+                        if (capturing == ARRAY_STRING) {
+                            this.putArrayValue();
+                            nexts = CONTINUE_OR_ARRAY_END;
                             continue;
                         }
 
-                        if (capturing == CapturingMode.ARRAY) {
-                            capturing = CapturingMode.ARRAY_STRING_VALUE;
-                            nextChars = null;
+                        if (capturing == ARRAY) {
+                            capturing = ARRAY_STRING;
+                            nexts = null;
                             continue;
                         }
 
                         // FINISHED CAPTURING
-                        if (capturing == CapturingMode.STRING_VALUE) {
-                            capturing = CapturingMode.NONE;
-                            values.put(Tools.concat("", (!group.isEmpty() ? "." : "") + key, '.', group), value.toString());
-                            key = new StringBuilder();
-                            value = new StringBuilder();
-
-                            nextChars = new NextChar(new char[] { JSON_CONTINUE, JSON_OBJECT_END }, null);
+                        if (capturing == VALUE_STRING) {
+                            capturing = NONE;
+                            this.putEntry(false);
+                            nexts = CONTINUE_OR_END;
                             continue;
                         }
 
                         // IS NOT A STRING VALUE
-                        if (capturing == CapturingMode.PRIMITIVE_VALUE) {
-                            capturing = CapturingMode.STRING_VALUE;
-                            nextChars = null;
+                        if (capturing == VALUE) {
+                            capturing = VALUE_STRING;
+                            nexts = null;
                             continue;
                         }
 
                         // KEY CAPTURING FINISHED
-                        if (capturing == CapturingMode.KEY) {
-                            capturing = CapturingMode.NONE;
-                            nextChars = new NextChar(new char[] { JSON_ENTRY_SPLIT }, null);
+                        if (capturing == KEY) {
+                            capturing = NONE;
+                            nexts = SPLIT;
                             continue;
                         }
 
-                        capturing = CapturingMode.KEY;
-                        nextChars = null;
+                        capturing = KEY;
+                        nexts = null;
                         continue;
                     }
 
@@ -178,86 +259,70 @@ public class JSONFormat implements IFormatCodec {
                     }
 
                     case JSON_ENTRY_SPLIT -> {
-                        if (capturing.string()) {
+                        if (capturing == KEY || capturing == VALUE_STRING) {
                             break;
                         }
-                        capturing = CapturingMode.PRIMITIVE_VALUE;
-                        nextChars = null;
+                        capturing = VALUE;
+                        nexts = null;
                         continue;
                     }
 
                     case JSON_CONTINUE -> {
                         // DO NOT CAPTURE WHEN IS CAPTURING A KEY
-                        if (capturing.string()) {
+                        if (capturing == KEY || capturing == VALUE_STRING) {
                             break;
                         }
-                        if (capturing == CapturingMode.PRIMITIVE_VALUE) {
-                            values.put(Tools.concat("", (!group.isEmpty() ? "." : "") + key.toString(), '.', group), value.toString());
-                            capturing = CapturingMode.NONE;
-                            key = new StringBuilder();
-                            value = new StringBuilder();
+                        if (capturing == VALUE) {
+                            this.putEntry(false);
+                            capturing = NONE;
+                            this.clear();
                         }
 
-                        if (capturing == CapturingMode.ARRAY_STRING_VALUE) {
-                            capturing = CapturingMode.ARRAY;
-                            nextChars = new NextChar(new char[] { JSON_STRING_LINE, JSON_ARRAY_END }, null);
+                        if (capturing == ARRAY_STRING) {
+                            capturing = ARRAY;
+                            nexts = new char[] { JSON_STRING_LINE, JSON_ARRAY_END };
                             continue;
                         }
 
-                        if (capturing == CapturingMode.ARRAY) {
-                            valueArray.add(value.toString());
-                            value = new StringBuilder();
-                            nextChars = null;
+                        if (capturing == ARRAY) {
+                            this.putArrayValue();
+                            nexts = null;
                             continue;
                         }
 
-                        nextChars = new NextChar(new char[] { JSON_STRING_LINE, JSON_OBJECT_END }, null);
+                        nexts = new char[] { JSON_STRING_LINE, JSON_OBJECT_END };
                         continue;
                     }
 
                     case JSON_OBJECT_END -> {
+                        this.popGroup(); // POP GROUP fixme move capturing to popGroup
                         if (group.isEmpty()) {
-                            finished = true;
-                            capturing = CapturingMode.NONE;
-                            nextChars = null;
+                            capturing = NONE;
+                            nexts = null;
                             continue;
                         }
                         group.removeLast();
-                        nextChars = new NextChar(new char[]{ JSON_CONTINUE, JSON_OBJECT_END }, null);
+                        nexts = CONTINUE_OR_END;
                         continue;
                     }
 
                     case JSON_ARRAY_END -> {
-                        if (capturing == CapturingMode.ARRAY || capturing == CapturingMode.ARRAY_STRING_VALUE) {
-                            capturing = CapturingMode.NONE;
-                            nextChars = new NextChar(new char[]{ JSON_CONTINUE, JSON_OBJECT_END }, null);
-                            valueArray.add(value.toString());
-                            values.put(Tools.concat("", (!group.isEmpty() ? "." : "") + key, '.', group), Arrays.toString(valueArray.toArray(new String[0])));
-                            valueArray.clear();
-                            value = new StringBuilder();
-                            key = new StringBuilder();
-
+                        if (capturing == ARRAY || capturing == ARRAY_STRING) {
+                            capturing = NONE;
+                            nexts = CONTINUE_OR_END;
+                            this.putArrayValue();
+                            this.putEntry(true);
                             continue;
                         }
                         throw new IllegalStateException("JSON array end detected but not capturing an array");
                     }
                 }
 
-                StringBuilder appender = switch (capturing) {
-                    case KEY -> key;
-                    case STRING_VALUE, PRIMITIVE_VALUE -> value;
-                    case ARRAY_STRING_VALUE, ARRAY -> value;
+                switch (capturing) {
+                    case KEY -> this.appendKey(c);
+                    case VALUE_STRING, VALUE, ARRAY_STRING, ARRAY -> this.appendValue(c);
                     case NONE -> throw new IllegalStateException("Not capturing values");
-                };
-
-                if (escaped) {
-                    appender.append("\\");
                 }
-
-                // OR BY DEFAULT, CAPTURE
-                appender.append(c);
-
-                escaped = false;
             }
         }
 
@@ -279,6 +344,58 @@ public class JSONFormat implements IFormatCodec {
         @Override
         public void close() throws IOException {
 
+        }
+
+        private void appendKey(char c) {
+            if (escaped) {
+                key.append("\\");
+            }
+            key.append(c);
+            escaped = false;
+        }
+
+        private void appendValue(char c) {
+            if (escaped) {
+                value.append("\\");
+            }
+            value.append(c);
+            escaped = false;
+        }
+
+        private void putEntry(boolean array) {
+            values.put(Tools.concat("", (!group.isEmpty() ? "." : "") + key, '.', group), array ? Arrays.toString(arrayValues.toArray()) :value.toString());
+            this.clear();
+            this.escaped = false;
+        }
+
+        private void putArrayValue() {
+            arrayValues.add(value.toString());
+            value.setLength(0);
+            escaped = false;
+        }
+
+        private void putValue() {
+            value.append(value.toString());
+            value.setLength(0);
+            escaped = false;
+        }
+
+        private void pushGroup() {
+            group.push(key.toString());
+            key.setLength(0);
+        }
+
+        private void popGroup() {
+            if (group.isEmpty()) {
+                this.finished = true;
+            }
+            group.pop();
+        }
+
+        private void clear() {
+            key.setLength(0);
+            value.setLength(0);
+            arrayValues.clear();
         }
     }
 }

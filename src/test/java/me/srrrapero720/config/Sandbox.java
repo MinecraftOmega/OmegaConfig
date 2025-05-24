@@ -1,6 +1,7 @@
 package me.srrrapero720.config;
 
 import me.srrrapero720.config.util.CustomFilter;
+import org.omegaconfig.OmegaConfig;
 import org.omegaconfig.api.annotations.Spec;
 import org.omegaconfig.api.annotations.ListConditions;
 import org.omegaconfig.api.annotations.Comment;
@@ -9,7 +10,7 @@ import org.omegaconfig.api.annotations.StringConditions;
 import org.omegaconfig.impl.fields.IntField;
 import org.omegaconfig.impl.fields.StringField;
 
-@Spec(value = "examplemod")
+@Spec(value = "examplemod", format = OmegaConfig.FORMAT_JSON)
 public class Sandbox {
     @Comment("This is a first-line comment")
     @Comment("Here i can add more details")

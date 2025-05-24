@@ -19,7 +19,16 @@ public interface IFormatWriter extends Closeable {
      * @param fieldName the name of the field
      * @param value     the boolean value to write
      */
-    void write(String fieldName, String value);
+    void write(String fieldName, String value, Class<?> type, Class<?> subType);
+
+    /**
+     * Write a field on the current position.
+     * Writing is sequential, so the order of the write calls fields is important.
+     *
+     * @param fieldName the name of the field
+     * @param values     values to write
+     */
+    void write(String fieldName, String[] values, Class<?> type, Class<?> subType);
 
     /**
      * Creates a new group on the current position of the file.

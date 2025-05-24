@@ -47,6 +47,7 @@ public class PROPFormat implements IFormatCodec {
         private final LinkedHashSet<String> groups = new LinkedHashSet<>();
 
         public FormatReader(Path filePath) throws IOException {
+            // TODO: safe maker
             final BufferedReader in = new BufferedReader(new FileReader(filePath.toFile()));
 
             String line;
@@ -99,6 +100,7 @@ public class PROPFormat implements IFormatCodec {
         private final StringBuilder data = new StringBuilder();
 
         public FormatWriter(Path filePath) throws IOException {
+            // TODO: safe maker
             this.out = new BufferedWriter(new FileWriter(filePath.toFile()));
         }
 
@@ -110,11 +112,16 @@ public class PROPFormat implements IFormatCodec {
         }
 
         @Override
-        public void write(String fieldName, String value) {
+        public void write(String fieldName, String value, Class<?> type, Class<?> subType) {
             this.data.append(Tools.concat("", "", FORMAT_KEY_GROUP_SPLIT, groups))
                     .append(FORMAT_KEY_DEF_SPLIT)
                     .append(value)
                     .append(FORMAT_KEY_BREAKLINE);
+        }
+
+        @Override
+        public void write(String fieldName, String[] values, Class<?> type, Class<?> subType) {
+
         }
 
         @Override

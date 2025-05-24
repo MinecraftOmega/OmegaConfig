@@ -3,9 +3,11 @@ package org.omegaconfig;
 import org.omegaconfig.api.annotations.Spec;
 
 import java.io.Closeable;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.TypeVariable;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
@@ -182,5 +184,11 @@ public class Tools {
             if (c == e) return true;
         }
         return false;
+    }
+
+    public static byte[] readAllBytes(Path path) throws IOException {
+        try (var in = new FileInputStream(path.toFile());) {
+            return in.readAllBytes();
+        }
     }
 }
