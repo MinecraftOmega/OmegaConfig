@@ -10,7 +10,7 @@ import org.omegaconfig.api.annotations.StringConditions;
 import org.omegaconfig.impl.fields.IntField;
 import org.omegaconfig.impl.fields.StringField;
 
-@Spec(value = "examplemod", format = OmegaConfig.FORMAT_JSON)
+@Spec(value = "examplemod", format = OmegaConfig.FORMAT_JSON5)
 public class Sandbox {
     @Comment("This is a first-line comment")
     @Comment("Here i can add more details")
@@ -29,6 +29,11 @@ public class Sandbox {
     public static long longField = 0L;
 
     @Comment(value = "Single line comment")
+    @NumberConditions(minFloat = -50f, maxFloat = 50f, math = true, strictMath = true)
+    @Spec.Field
+    public static float floatField = 0.0F; // This is a float field, not a double
+
+    @Comment(value = "Single line comment")
     @Spec.Field
     public static Yegoslovia simpleEnum = Yegoslovia.TINY;
 
@@ -45,11 +50,5 @@ public class Sandbox {
         public static String resourceLocation = "examplemod:valid_resource_location";
 
     }
-
-    // CAN WORKS WITH ANNOTATIONS OR VIA BUILDER
-    @NumberConditions(minInt = -50, maxInt = 50)
-    @Spec.Field(value = "custonFieldName")
-    @Comment("advanced int field")
-    public IntField instanceIntField = null;
 
 }

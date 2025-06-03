@@ -7,6 +7,7 @@ import org.omegaconfig.api.annotations.NumberConditions;
 import org.omegaconfig.api.annotations.Spec;
 import org.omegaconfig.api.annotations.StringConditions;
 
+import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.nio.file.Path;
@@ -16,7 +17,7 @@ import static org.omegaconfig.OmegaConfigRegistry.*;
 import static org.omegaconfig.Tools.toBoxed;
 
 public class OmegaConfig {
-    private static final Thread RT_WORKER = new Thread();
+    private static final Thread RT_WORKER = new Thread(OmegaConfig::run);
 
     // FORMATS
     public static final String FORMAT_PROPERTIES = "properties";
@@ -170,7 +171,8 @@ public class OmegaConfig {
             }
             else if (specFieldClass == Character.class) fieldBuilder = builder.defineChar(name, field, instance);
             else if (specFieldClass == List.class) fieldBuilder = builder.defineList(name, field, instance, Tools.subTypeOf(field));
-            else if (specFieldClass.isAssignableFrom(Enum.class)) fieldBuilder = builder.defineEnum(name, field, instance);
+            else if (specFieldClass.isArray()) fieldBuilder = builder.defineArray(name, field, instance, Tools.subTypeOf(field));
+            else if (Enum.class.isAssignableFrom(specFieldClass)) fieldBuilder = builder.defineEnum(name, field, instance);
             else fieldBuilder = builder.define(name, field, instance);
 
             // COMMENTS
@@ -196,12 +198,127 @@ public class OmegaConfig {
         }
     }
 
-    static <T, T2> T tryParse(String value, Class<T> type, Class<T2> type2) {
-        ICodec<T> codec = (ICodec<T>) CODECS.get(toBoxed(type));
+    static String[] tryEncode(Object[] value, Class<?> type, Class<?> subType) {
+        if (value instanceof String[] s) {
+            return s;
+        }
 
+        ICodec<Object> codec = (ICodec<Object>) CODECS.get(toBoxed(subType));
+
+        if (codec == null) {
+            for (ICodec<?> c: CODECS.values()) {
+                // SECOND ATTEMPT
+                if (c.type().isAssignableFrom(subType)) {
+                    codec = (ICodec<Object>) c;
+                    break;
+                }
+            }
+        }
+
+        if (codec == null) {
+            throw new IllegalArgumentException("Codec for type '" + value.getClass().getName() + "' was not founded");
+        }
+
+        String[] result = new String[value.length];
+
+        if (codec instanceof IComplexCodec<Object, ?> complexCodec) {
+            for (int i = 0; i < value.length; i++) {
+                result[i] = complexCodec.encode(value[i], subType);
+            }
+            return result;
+        }
+
+        for (int i = 0; i < value.length; i++) {
+            result[i] = codec.encode(value[i]);
+        }
+
+        return result;
+    }
+
+    static String tryEncode(Object value) {
+        return tryEncode(value, null);
+    }
+
+    static String tryEncode(Object value, Class<?> subType) {
+        if (value instanceof String s) {
+            return s;
+        }
+
+        ICodec<Object> codec = (ICodec<Object>) CODECS.get(toBoxed(value.getClass()));
+
+        if (codec == null) {
+            for (ICodec<?> c: CODECS.values()) {
+                // FIRST ATTEMPT
+                if (c.type().isInstance(value)) {
+                    codec = (ICodec<Object>) c;
+                    break;
+                }
+
+                // SECOND ATTEMPT
+                if (c.type().isAssignableFrom(value.getClass())) {
+                    codec = (ICodec<Object>) c;
+                    break;
+                }
+            }
+        }
+
+        if (codec == null) {
+            throw new IllegalArgumentException("Codec for type '" + value.getClass().getName() + "' was not founded");
+        }
+
+        if (codec instanceof IComplexCodec<Object, ?> complexCodec) {
+            return complexCodec.encode(value, subType);
+        }
+
+        return codec.encode(value);
+    }
+
+    static <T, T2> T[] tryParse(String[] value, Class<T> type, Class<T2> subType) {
+        if (value == null) {
+            throw new NullPointerException("Value cannot be null");
+        }
+        if (subType == String.class) {
+            return (T[]) value;
+        }
+
+        ICodec<T> codec = (ICodec<T>) CODECS.get(toBoxed(subType));
+
+        if (codec == null) {
+            for (ICodec<?> c: CODECS.values()) {
+                if (c.type().isAssignableFrom(subType)) {
+                    codec = (ICodec<T>) c;
+                    break;
+                }
+            }
+        }
+
+        if (codec == null)
+            throw new IllegalArgumentException("Codec for type '" + type.getName() + "' with subType '" + subType.getName() + "' was not founded");
+
+        if (codec instanceof IComplexCodec<T, ?> complexCodec) {
+            T[] result = (T[]) Array.newInstance(subType, value.length);
+            for (int i = 0; i < value.length; i++) {
+                result[i] = ((IComplexCodec<T, T2>) complexCodec).decode(value[i], subType);
+            }
+            return result;
+        }
+
+        T[] result = (T[]) Array.newInstance(subType, value.length);
+        for (int i = 0; i < value.length; i++) {
+            result[i] = codec.decode(value[i]);
+        }
+
+        return result;
+    }
+
+    static <T, T2> T tryParse(String value, Class<T> type, Class<T2> type2) {
         if (type == String.class) {
             return (T) value;
         }
+
+
+        ICodec<T> codec = (ICodec<T>) CODECS.get(toBoxed(type));
+
 
         if (codec == null) {
             for (ICodec<?> c: CODECS.values()) {
@@ -221,34 +338,49 @@ public class OmegaConfig {
         return codec.decode(value);
     }
 
-    static String tryEncode(Object value, Class<?>... subType) {
-        if (value instanceof String s) {
-            return s;
-        }
-
-        ICodec<Object> codec = (ICodec<Object>) CODECS.get(toBoxed(value.getClass()));
-
-        if (codec == null) {
-            for (ICodec<?> c: CODECS.values()) {
-                if (c.type().isInstance(value)) {
-                    codec = (ICodec<Object>) c;
-                    break;
-                }
-
-                for (Class<?> clazz: value.getClass().getInterfaces()) {
-                    codec = (ICodec<Object>) CODECS.get(toBoxed(clazz));
+    static void run() {
+        while (!Thread.interrupted()) {
+            synchronized (SPECS) {
+                for (ConfigSpec spec: SPECS.values()) {
+                    if (!spec.isLoaded()) {
+                        try {
+                            spec.load();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                            spec.setDirty(true); // mark as dirty to re-save
+                        }
+                    }
+                    if (spec.isDirty()) {
+                        try {
+                            spec.save();
+                        } catch (Exception e) {
+                            throw new IllegalStateException("Failed to save spec '" + spec.name() + "'", e);
+                        }
+                    }
+                    if (spec.isReload()) {
+                        try {
+                            spec.load();
+                        } catch (Exception e) {
+                            throw new IllegalStateException("Failed to reload spec '" + spec.name() + "'", e);
+                        }
+                    }
                 }
             }
         }
+    }
 
-        if (codec == null) {
-            throw new IllegalArgumentException("Codec for type '" + value.getClass().getName() + "' was not founded");
-        }
-
-        if (codec instanceof IComplexCodec<Object, ?> complexCodec) {
-            return complexCodec.encode(value, subType[0]);
-        }
-
-        return codec.encode(value);
+    static {
+        init();
+        RT_WORKER.setDaemon(true);
+        RT_WORKER.setName("OmegaConfig-Worker");
+        RT_WORKER.start();
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                RT_WORKER.interrupt();
+                RT_WORKER.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }));
     }
 }

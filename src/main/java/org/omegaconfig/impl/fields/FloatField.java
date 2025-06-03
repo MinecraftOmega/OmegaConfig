@@ -31,6 +31,13 @@ public final class FloatField extends BaseNumberField<Float> implements DoubleSu
     }
 
     @Override
+    public void validate() {
+        if (this.primitive < this.min || this.primitive > this.max) {
+            this.reset();
+        }
+    }
+
+    @Override
     public void accept(Float value) {
         super.accept(primitive = value);
     }

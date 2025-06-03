@@ -31,6 +31,13 @@ public final class ShortField extends BaseNumberField<Short> implements IntSuppl
     }
 
     @Override
+    public void validate() {
+        if (this.primitive < this.min || this.primitive > this.max) {
+            this.reset(); // Reset to default if out of bounds
+        }
+    }
+
+    @Override
     public void accept(Short value) {
         super.accept(primitive = value);
     }

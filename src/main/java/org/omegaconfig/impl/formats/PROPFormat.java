@@ -72,10 +72,26 @@ public class PROPFormat implements IFormatCodec {
         public String read(String fieldName) {
             // CONCAT THE GROUPS
             StringBuilder group = new StringBuilder();
-            for (String g : this.groups) {
+            for (String g: this.groups) {
                 group.append(g).append(FORMAT_KEY_GROUP_SPLIT);
             }
             return fields.get(group.append(fieldName).toString());
+        }
+
+        @Override
+        public String[] readArray(String fieldName) {
+            // CONCAT THE GROUPS
+            StringBuilder group = new StringBuilder();
+            for (String g: this.groups) {
+                group.append(g).append(FORMAT_KEY_GROUP_SPLIT);
+            }
+            String value = fields.get(group.append(fieldName).toString());
+            if (value.charAt(0) == '[' && value.charAt(value.length() - 1) == ']') {
+                value = value.substring(1, value.length() - 1);
+                return value.trim().split(",");
+            }
+
+            return null;
         }
 
         @Override

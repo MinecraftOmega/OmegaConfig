@@ -31,6 +31,13 @@ public final class DoubleField extends BaseNumberField<Double> implements Double
     }
 
     @Override
+    public void validate() {
+        if (this.primitive < this.min || this.primitive > this.max) {
+            this.reset();
+        }
+    }
+
+    @Override
     public void accept(Double value) {
         super.accept(primitive = value);
     }

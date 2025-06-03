@@ -24,6 +24,11 @@ public final class BooleanField extends BaseConfigField<Boolean, Void> implement
     }
 
     @Override
+    public void validate() {
+        // No validation needed for boolean fields
+    }
+
+    @Override
     public void accept(Boolean aBoolean) {
         super.accept(primitive = aBoolean);
     }

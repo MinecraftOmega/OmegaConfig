@@ -26,4 +26,15 @@ public class PathField extends BaseConfigField<Path, Void> {
     public Class<Path> type() {
         return Path.class;
     }
+
+    @Override
+    public void validate() {
+        if (this.fileExists && !this.get().toFile().exists()) {
+            this.reset();
+        }
+
+        if (this.runtimePath && this.get().toFile().isAbsolute()) {
+            this.reset();
+        }
+    }
 }

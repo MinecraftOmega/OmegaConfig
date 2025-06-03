@@ -140,6 +140,11 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
     }
 
     @Override
+    public void validate() {
+        throw new UnsupportedOperationException("Groups cannot handle values");
+    }
+
+    @Override
     public void set0(Object object) {
         throw new UnsupportedOperationException("Groups cannot handle values");
     }

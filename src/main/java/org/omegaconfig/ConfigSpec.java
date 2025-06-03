@@ -57,6 +57,8 @@ public final class ConfigSpec extends ConfigGroup {
     private final HashSet<IConfigField<?, ?>> dirtyFields = new LinkedHashSet<>();
     private final int backups;
     boolean dirty;
+    boolean loaded;
+    boolean reload;
 
     private ConfigSpec(String name, IFormatCodec format, String suffix, Path path, int backups) {
         super(name, null);
@@ -76,6 +78,7 @@ public final class ConfigSpec extends ConfigGroup {
         if (field.spec() != this)
             throw new IllegalArgumentException("ConfigField requires to be updated by the intended spec");
         this.dirtyFields.add(field);
+        this.dirty = true;
     }
 
     Set<IConfigField<?, ?>> dirtyFields() {
@@ -98,9 +101,30 @@ public final class ConfigSpec extends ConfigGroup {
         return this.backups;
     }
 
+    public boolean isDirty() {
+        return this.dirty;
+    }
+
+    public boolean isLoaded() {
+        return this.loaded;
+    }
+
+    public boolean isReload() {
+        return this.reload;
+    }
+
+    public void setReload(boolean reload) {
+        this.reload = reload;
+    }
+
+    public void setDirty(boolean dirty) {
+        this.dirty = dirty;
+    }
+
     void load() throws IOException {
         IFormatReader reader = this.format.createReader(this.filePath);
         this.load(this, reader);
+        reader.close();
     }
 
     private void load(ConfigGroup group, IFormatReader reader) {
@@ -112,16 +136,27 @@ public final class ConfigSpec extends ConfigGroup {
                 continue;
             }
 
-            String value = reader.read(field.name());
-            if (value != null) {
-                field.set0(OmegaConfig.tryParse(value, field.type(), field.subType()));
+            if (field instanceof CollectionField<?,?> collectionField) {
+                String[] values = reader.readArray(field.name());
+                if (values != null) {
+                    Object[] parsedValues = OmegaConfig.tryParse(values, field.type(), field.subType());
+                    if (parsedValues != null && Tools.requireNotNull(parsedValues)) {
+                        collectionField.setArray(parsedValues);
+                    }
+                }
+            } else {
+                String value = reader.read(field.name());
+                if (value != null) {
+                    field.set0(OmegaConfig.tryParse(value, field.type(), field.subType()));
+                }
             }
         }
     }
 
-    public void save() throws IOException {
+    void save() throws IOException {
         IFormatWriter writer = this.format.createWritter(this.filePath);
         this.save(this, writer);
+        writer.close();
     }
 
     private void save(ConfigGroup group, IFormatWriter writer) {
@@ -162,7 +197,7 @@ public final class ConfigSpec extends ConfigGroup {
                     writer.write(String.format(COMMENT_MUST_END_WITH, stringField.endsWith));
                 } else if (!stringField.startsWith.isEmpty() && stringField.endsWith.isEmpty()) {
                     writer.write(String.format(COMMENT_MUST_START_WITH, stringField.startsWith));
-                } else {
+                } else if (!stringField.startsWith.isEmpty()) {
                     writer.write(String.format(COMMENT_MUST_START_AND_END_WITH, stringField.startsWith, stringField.endsWith));
                 }
 
@@ -207,10 +242,12 @@ public final class ConfigSpec extends ConfigGroup {
             }
 
             if (field instanceof ListField<?> listField) {
-                writer.write(field.name(), listField.get().toArray());
+                writer.write(field.name(), OmegaConfig.tryEncode(listField.get().toArray(), field.type(), field.subType()), field.type(), field.subType());
+            } else if (field instanceof ArrayField<?> arrayField) {
+                writer.write(field.name(), OmegaConfig.tryEncode(arrayField.get(), field.type(), field.subType()), field.type(), field.subType());
+            } else {
+                writer.write(field.name(), OmegaConfig.tryEncode(field.get(), field.subType()), field.type(), field.subType());
             }
-
-            writer.write(field.name(), OmegaConfig.tryEncode(field.get(), field.subType()));
         }
     }
 
@@ -224,7 +261,17 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         public SpecBuilder(String name, IFormatCodec format, String suffix, int backups) {
-            Path path = OmegaConfig.getPath().toAbsolutePath().resolve(name + (!suffix.isEmpty() ? ("-" + suffix) : "") + "." + format);
+            if (name == null || name.isEmpty()) {
+                throw new IllegalArgumentException("Name cannot be null or empty");
+            }
+            if (format == null) {
+                throw new IllegalArgumentException("Format cannot be null");
+            }
+            if (backups < 0) {
+                throw new IllegalArgumentException("Backups cannot be negative");
+            }
+
+            Path path = OmegaConfig.getPath().toAbsolutePath().resolve(name + (!suffix.isEmpty() ? ("-" + suffix) : "") + format.extension());
             this.spec = new ConfigSpec(name, format, suffix, path, backups);
             this.active = this.spec;
         }
@@ -235,6 +282,10 @@ public final class ConfigSpec extends ConfigGroup {
 
         <T> ListFieldBuilder<T> defineList(String name, Field field, Object context, Class<T> subType) {
             return new ListFieldBuilder<>(name, this.active, field, context, subType);
+        }
+
+        <T> ArrayFieldBuilder<T> defineArray(String name, Field field, Object context, Class<T> subType) {
+            return new ArrayFieldBuilder<>(name, this.active, field, context, subType);
         }
 
         <T extends Enum<T>> EnumFieldBuilder<T> defineEnum(String name, Field field, Object context) {
@@ -401,6 +452,9 @@ public final class ConfigSpec extends ConfigGroup {
                 return new BaseConfigField<>(this.name, this.group, this.comments, this.defaultValue) {
 
                     @Override
+                    public void validate() {}
+
+                    @Override
                     public Class<T> type() {
                         return type;
                     }
@@ -420,6 +474,11 @@ public final class ConfigSpec extends ConfigGroup {
                     @Override
                     public Class<S> subType() {
                         return subType;
+                    }
+
+                    @Override
+                    public void validate() {
+
                     }
                 };
             }
@@ -463,7 +522,76 @@ public final class ConfigSpec extends ConfigGroup {
         }
     }
 
-    // MAP
+    static final class ArrayFieldBuilder<S> extends BaseFieldBuilder<ArrayFieldBuilder<S>, ArrayField<S>> {
+        private final Class<S> subType;
+        private final Field field;
+        private final Object context;
+        private final S[] defaultValue;
+        private boolean stringify = false;
+        private boolean singleline = true;
+        private boolean allowEmpty = true;
+        private boolean unique = false;
+        private int limit = Integer.MAX_VALUE;
+        private Class<? extends Predicate<S>> filter;
+
+        private ArrayFieldBuilder(String name, ConfigGroup group, S[] defaultValue, Class<S> subType) {
+            super(name, group);
+            this.defaultValue = defaultValue;
+            this.subType = subType;
+            this.field = null;
+            this.context = null;
+        }
+
+        private ArrayFieldBuilder(String name, ConfigGroup group, Field field, Object context, Class<S> subType) {
+            super(name, group);
+            this.defaultValue = null;
+            this.subType = subType;
+            this.field = field;
+            this.context = context;
+        }
+
+        public ArrayFieldBuilder<S> stringify(boolean stringify) {
+            this.stringify = stringify;
+            return this;
+        }
+
+        public ArrayFieldBuilder<S> singleline(boolean singleline) {
+            this.singleline = singleline;
+            return this;
+        }
+
+        public ArrayFieldBuilder<S> allowEmpty(boolean allowEmpty) {
+            this.allowEmpty = allowEmpty;
+            return this;
+        }
+
+        public ArrayFieldBuilder<S> unique(boolean unique) {
+            this.unique = unique;
+            return this;
+        }
+
+        public ArrayFieldBuilder<S> limit(int limit) {
+            this.limit = limit;
+            return this;
+        }
+
+        public ArrayFieldBuilder<S> filter(Class<? extends Predicate<S>> filter) {
+            if (filter == null) {
+                throw new IllegalArgumentException("Filter cannot be null");
+            }
+            this.filter = filter;
+            return this;
+        }
+
+        @Override
+        public ArrayField<S> end() {
+            if (this.field == null) {
+                return new ArrayField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.defaultValue, this.subType);
+            } else {
+                return new ArrayField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.field, this.context, this.subType);
+            }
+        }
+    }
 
     public static final class ListFieldBuilder<S> extends BaseFieldBuilder<ListFieldBuilder<S>, ListField<S>> {
         private final Class<S> subType;
@@ -536,7 +664,7 @@ public final class ConfigSpec extends ConfigGroup {
             if (this.field == null) {
                 return new ListField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.defaultValue, this.subType);
             } else {
-                return new ListField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.subType, this.field, this.context);
+                return new ListField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.field, this.context, this.subType);
             }
         }
     }

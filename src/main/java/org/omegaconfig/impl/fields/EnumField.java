@@ -22,6 +22,11 @@ public final class EnumField<T extends Enum<T>> extends BaseConfigField<T, T> im
     }
 
     @Override
+    public void validate() {
+
+    }
+
+    @Override
     public Class<T> type() {
         return (Class<T>) this.defaultValue.getClass();
     }

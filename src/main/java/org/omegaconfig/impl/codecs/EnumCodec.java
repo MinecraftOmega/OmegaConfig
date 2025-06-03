@@ -5,7 +5,12 @@ import org.omegaconfig.api.IComplexCodec;
 public class EnumCodec implements IComplexCodec<Enum, Enum> {
     @Override
     public Enum decode(String value, Class<Enum> subType) {
-        return Enum.valueOf((Class<? extends Enum>) subType, value);
+        try {
+            return Enum.valueOf((Class<? extends Enum>) subType, value);
+        } catch (Exception e) {
+            // Handle the case where the enum value is not found
+            return null;
+        }
     }
 
     @Override

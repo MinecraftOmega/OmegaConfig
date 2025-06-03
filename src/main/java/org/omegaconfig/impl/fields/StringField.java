@@ -34,21 +34,39 @@ public final class StringField extends BaseConfigField<String, Void> {
         this.mode = mode;
     }
 
-    public boolean validate() {
+    @Override
+    public void validate() {
         String value = this.get();
 
         if (value.isEmpty() && !this.allowEmpty) {
-            return false;
+            this.reset();
+            return;
         }
 
-        return switch (this.mode) {
-            case CONTAINS -> value.contains(this.condition);
-            case EQUALS -> value.equals(this.condition);
-            case REGEX -> Pattern.compile(this.condition, this.regexFlags).matcher(value).matches();
-            case NOT_CONTAINS -> !value.contains(this.condition);
-            case NOT_EQUALS -> !value.equals(this.condition);
-            case NOT_REGEX -> !value.matches(this.condition);
-        };
+        if (this.startsWith != null && !value.startsWith(this.startsWith)) {
+            this.reset();
+            return;
+        }
+
+        if (this.endsWith != null && !value.endsWith(this.endsWith)) {
+            this.reset();
+            return;
+        }
+
+        if (this.condition != null && !this.condition.isEmpty()) {
+            boolean conditionCheck = switch (this.mode) {
+                case CONTAINS -> value.contains(this.condition);
+                case EQUALS -> value.equals(this.condition);
+                case REGEX -> Pattern.compile(this.condition, this.regexFlags).matcher(value).matches();
+                case NOT_CONTAINS -> !value.contains(this.condition);
+                case NOT_EQUALS -> !value.equals(this.condition);
+                case NOT_REGEX -> !value.matches(this.condition);
+            };
+            if (!conditionCheck) {
+                this.reset();
+            }
+        }
+
     }
 
     @Override

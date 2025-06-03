@@ -45,6 +45,13 @@ public final class ByteField extends BaseNumberField<Byte> implements IntSupplie
     }
 
     @Override
+    public void validate() {
+        if (this.primitive < this.min || this.primitive > this.max) {
+            this.reset(); // Reset to default if out of bounds
+        }
+    }
+
+    @Override
     public String minValueString() {
         return this.min == Byte.MIN_VALUE ? null : String.valueOf(min);
     }

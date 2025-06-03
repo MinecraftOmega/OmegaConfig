@@ -43,7 +43,7 @@ public class JSONFormat implements IFormatCodec {
 
         public FormatWriter(Path path) throws IOException {
             // TODO: safe maker
-            if (!path.toFile().getParentFile().mkdirs()) {
+            if (!path.toFile().getParentFile().exists() && !path.toFile().getParentFile().mkdirs()) {
                 throw new IOException("Failed to create parent directories for " + path);
             }
             this.writer = new BufferedWriter(new FileWriter(path.toFile(), StandardCharsets.UTF_8));
@@ -60,11 +60,14 @@ public class JSONFormat implements IFormatCodec {
         public void write(String fieldName, String value, Class<?> type, Class<?> subType) {
             if (this.beginned) {
                 this.buffer.append(JSON_CONTINUE);
+                this.buffer.append("\n");
             } else {
                 this.beginned = true;
             }
 
-            boolean isString = (!type.isAssignableFrom(Number.class) && !type.isAssignableFrom(Boolean.class));
+            System.out.println("Writing field: " + fieldName + " with value: " + value + " of type: " + type.getName() + " and subtype: " + (subType != null ? subType.getName() : "null"));
+            boolean isString = !(Number.class.isAssignableFrom(type)) || Boolean.class.isAssignableFrom(type);
+
             // WRITE SPACES
             this.buffer.append("\t".repeat(this.group.size() + 1));
             this.buffer.append(JSON_STRING_LINE);
@@ -79,12 +82,19 @@ public class JSONFormat implements IFormatCodec {
             if (isString) {
                 this.buffer.append(JSON_STRING_LINE);
             }
-            this.buffer.append("\n");
+
         }
 
         @Override
         public void write(String fieldName, String[] values, Class<?> type, Class<?> subType) {
-            boolean isString = (!subType.isAssignableFrom(Number.class) && !subType.isAssignableFrom(Boolean.class));
+            if (this.beginned) {
+                this.buffer.append(JSON_CONTINUE);
+                this.buffer.append("\n");
+            } else {
+                this.beginned = true;
+            }
+
+            boolean isString = (!subType.isAssignableFrom(Number.class) || !subType.isAssignableFrom(Boolean.class));
 
             this.buffer.append("\t".repeat(this.group.size() + 1));
             this.buffer.append(JSON_STRING_LINE);
@@ -111,10 +121,18 @@ public class JSONFormat implements IFormatCodec {
                 }
                 this.buffer.append("\n");
             }
+            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append(JSON_ARRAY_END);
         }
 
         @Override
         public void push(String groupName) {
+            if (this.beginned) {
+                this.buffer.append(JSON_CONTINUE);
+                this.buffer.append("\n");
+            } else {
+                this.beginned = true;
+            }
             this.buffer.append("\t".repeat(this.group.size() + 1));
             this.buffer.append(JSON_STRING_LINE);
             this.buffer.append(groupName);
@@ -124,11 +142,13 @@ public class JSONFormat implements IFormatCodec {
             this.buffer.append(JSON_OBJECT_START);
             this.buffer.append("\n");
             this.group.push(groupName);
+            this.beginned = false;
         }
 
         @Override
         public void pop() {
             this.group.pop();
+            this.buffer.append('\n');
             this.buffer.append("\t".repeat(this.group.size() + 1));
             this.buffer.append(JSON_OBJECT_END);
             this.buffer.append("\n");
@@ -136,7 +156,8 @@ public class JSONFormat implements IFormatCodec {
 
         @Override
         public void close() throws IOException {
-            this.writer.write(JSON_OBJECT_END);
+            this.buffer.append(JSON_OBJECT_END);
+            this.writer.write(this.buffer.toString());
             this.writer.flush();
             this.writer.close();
         }
@@ -155,7 +176,7 @@ public class JSONFormat implements IFormatCodec {
         public static final int VALUE_STRING = 3;
         public static final int ARRAY = 4;
         public static final int ARRAY_STRING = 5;
-        public final LinkedHashMap<String, String> values = new LinkedHashMap<>();
+        public final LinkedHashMap<String, Object> values = new LinkedHashMap<>();
         public final Stack<String> group = new Stack<>();
         public final StringBuilder key = new StringBuilder();
         public final StringBuilder value = new StringBuilder();
@@ -175,7 +196,7 @@ public class JSONFormat implements IFormatCodec {
                 boolean whitespace = Character.isWhitespace(c);
 
                 // SKIP WHITESPACE PROCESING WHEN IS NOT CAPTURING NON-STRING-VALUES
-                if (whitespace && (capturing != VALUE_STRING && capturing != KEY && capturing != ARRAY_STRING) || (capturing == ARRAY_STRING && nexts != null))
+                if (whitespace && ((capturing != VALUE_STRING && capturing != KEY && capturing != ARRAY_STRING) || (capturing == ARRAY_STRING && nexts != null)))
                     continue;
 
                 // THROW WHEN JSON SPEC IS FINISHED BUT STILL CONTAINS DATA (WTF)
@@ -328,22 +349,39 @@ public class JSONFormat implements IFormatCodec {
 
         @Override
         public String read(String fieldName) {
-            return "";
+            var value = values.get(Tools.concat("", (!group.isEmpty() ? "." : "") + fieldName, '.', group));
+            if (value instanceof String s) {
+                return s;
+            }
+            return null;
+        }
+
+        @Override
+        public String[] readArray(String fieldName) {
+            var value = values.get(Tools.concat("", (!group.isEmpty() ? "." : "") + fieldName, '.', group));
+            if (value instanceof String[] s) {
+                return s;
+            }
+            return null;
         }
 
         @Override
         public void push(String group) {
-
+            this.group.push(group);
         }
 
         @Override
         public void pop() {
-
+            this.group.pop();
         }
 
         @Override
-        public void close() throws IOException {
-
+        public void close() {
+            this.values.clear();
+            this.group.clear();
+            this.key.setLength(0);
+            this.value.setLength(0);
+            this.arrayValues.clear();
         }
 
         private void appendKey(char c) {
@@ -388,6 +426,7 @@ public class JSONFormat implements IFormatCodec {
         private void popGroup() {
             if (group.isEmpty()) {
                 this.finished = true;
+                return;
             }
             group.pop();
         }

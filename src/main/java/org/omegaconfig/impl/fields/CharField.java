@@ -24,6 +24,11 @@ public final class CharField extends BaseConfigField<Character, Void> {
     }
 
     @Override
+    public void validate() {
+        // No validation needed for char
+    }
+
+    @Override
     public void accept(Character character) {
         super.accept(primitive = character);
     }

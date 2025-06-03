@@ -60,6 +60,11 @@ public class Tools {
 
     public static Class<?> subTypeOf(Field field) {
         Class<?> type = typeOf(field);
+
+        if (type.isArray()) {
+            return type.getComponentType();
+        }
+
         TypeVariable<?>[] types = type.getTypeParameters();
 
         if (types.length == 0) return null;
@@ -93,7 +98,7 @@ public class Tools {
     public static <T> T valueFrom(Field field, Object context) {
         try {
             T result = (T) field.get(context);
-            if (result == null) throw new NullPointerException("Field doesn't define a default value");
+            if (result == null) throw new NullPointerException("Field its empty");
             return result;
         } catch (Exception e) {
             throw new IllegalStateException("Failed to validate field" + (field != null ? " " + field.getName() : " because it's null"), e);
@@ -190,5 +195,14 @@ public class Tools {
         try (var in = new FileInputStream(path.toFile());) {
             return in.readAllBytes();
         }
+    }
+
+    public static boolean requireNotNull(Object[] parsedValues) {
+        for (Object value: parsedValues) {
+            if (value == null) {
+                return false;
+            }
+        }
+        return true;
     }
 }

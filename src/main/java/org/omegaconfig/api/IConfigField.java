@@ -3,6 +3,7 @@ package org.omegaconfig.api;
 import org.omegaconfig.ConfigGroup;
 import org.omegaconfig.ConfigSpec;
 
+import java.util.Arrays;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -78,11 +79,22 @@ public interface IConfigField<T, S> extends Consumer<T>, Supplier<T> {
     boolean reflected();
 
     /**
+     * Validates the field value, resets to default value if it doesn't match the validation
+     */
+    void validate();
+
+
+    /**
      * Internal Usage
      * @param object
      */
     default void set0(Object object) {
-        this.accept((T) object);
+        if (object == null) {
+            this.reset();
+        } else {
+            this.accept((T) object);
+            this.validate();
+        }
     }
 
     default void set(T value) {

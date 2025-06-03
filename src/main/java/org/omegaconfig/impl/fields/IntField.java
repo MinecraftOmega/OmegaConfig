@@ -31,6 +31,13 @@ public final class IntField extends BaseNumberField<Integer> implements IntSuppl
     }
 
     @Override
+    public void validate() {
+        if (this.primitive < this.min || this.primitive > this.max) {
+            this.reset();
+        }
+    }
+
+    @Override
     public void accept(Integer integer) {
         super.accept(primitive = integer);
     }

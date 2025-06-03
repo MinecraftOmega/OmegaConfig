@@ -31,6 +31,13 @@ public final class LongField extends BaseNumberField<Long> implements LongSuppli
     }
 
     @Override
+    public void validate() {
+        if (this.primitive < this.min || this.primitive > this.max) {
+            this.reset(); // Reset to default if out of bounds
+        }
+    }
+
+    @Override
     public void accept(Long value) {
         super.accept(primitive = value);
     }

@@ -19,8 +19,6 @@ public sealed abstract class BaseNumberField<T extends Number> extends BaseConfi
         super(name, group, comments, defaultValue);
         this.math = math;
         this.strictMath = strictMath;
-        Number n = Integer.valueOf(1);
-        
     }
 
     public boolean math() {

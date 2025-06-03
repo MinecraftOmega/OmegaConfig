@@ -11,6 +11,13 @@ public interface IFormatReader extends Closeable {
     String read(String fieldName);
 
     /**
+     * Reads a value from the configuration file
+     * @param fieldName the field name
+     * @return the value read from the configuration file
+     */
+    String[] readArray(String fieldName);
+
+    /**
      * Pushes a group to the stack, so that the next read will be relative to this group
      * @param group the group name
      */
