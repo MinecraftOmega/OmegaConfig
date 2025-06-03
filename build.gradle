@@ -13,6 +13,8 @@ base {
     libsDirectory = new File("builtJars/")
 }
 
+version = properties.versiontype != "release" ? "${properties.version}.${properties.versiontype}" : properties.version
+
 test {
     useJUnitPlatform()
 }
