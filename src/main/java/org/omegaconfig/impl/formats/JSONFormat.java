@@ -322,7 +322,7 @@ public class JSONFormat implements IFormatCodec {
                             nexts = null;
                             continue;
                         }
-                        group.removeLast();
+                        group.pop();
                         nexts = CONTINUE_OR_END;
                         continue;
                     }

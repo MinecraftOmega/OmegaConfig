@@ -10,6 +10,7 @@ import java.io.*;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Stack;
 
 public class PROPFormat implements IFormatCodec {
     public static final String FORMAT_KEY_DEF_SPLIT = "=";
@@ -44,7 +45,7 @@ public class PROPFormat implements IFormatCodec {
 
     private static class FormatReader implements IFormatReader {
         private final LinkedHashMap<String, String> fields = new LinkedHashMap<>();
-        private final LinkedHashSet<String> groups = new LinkedHashSet<>();
+        private final Stack<String> groups = new Stack<>();
 
         public FormatReader(Path filePath) throws IOException {
             // TODO: safe maker
@@ -96,12 +97,12 @@ public class PROPFormat implements IFormatCodec {
 
         @Override
         public void push(String group) {
-            this.groups.add(group);
+            this.groups.push(group);
         }
 
         @Override
         public void pop() {
-            this.groups.removeLast();
+            this.groups.pop();
         }
 
         @Override
@@ -111,7 +112,7 @@ public class PROPFormat implements IFormatCodec {
     }
 
     private static class FormatWriter implements IFormatWriter {
-        private final LinkedHashSet<String> groups = new LinkedHashSet<>();
+        private final Stack<String> groups = new Stack<>();
         private final BufferedWriter out;
         private final StringBuilder data = new StringBuilder();
 
@@ -143,13 +144,13 @@ public class PROPFormat implements IFormatCodec {
         @Override
         // TODO: implement a check for re-pushing a wrote group
         public void push(String groupName) {
-            this.groups.add(groupName);
+            this.groups.push(groupName);
             this.data.append(Tools.concat("", "", FORMAT_KEY_GROUP_SPLIT, groups));
         }
 
         @Override
         public void pop() {
-            this.groups.removeLast();
+            this.groups.pop();
             this.data.append(FORMAT_KEY_BREAKLINE.repeat(2));
         }
 
