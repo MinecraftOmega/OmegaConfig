@@ -1,0 +1,31 @@
+{
+	// This is a first-line comment
+	// Here i can add more details
+	// Conditions are attached on comments automatically
+	// Value must start with { and end with }
+	// Value must contain 
+	// Must no be empty
+	"stringField": "{test_of_what_should_contain}",
+
+	// Value must match with ^[1-9a-z_]+:[1-9a-z_]+$
+	// Must no be empty
+	"resourceLocation": "examplemod:valid_resource_location",
+
+	// Allows math expressions, hard fails on invalid math expressions
+	// Value must be less than '-48' and greater than '105'
+	"longField": 0,
+
+	// Accepted values are: [GIANT, MEDIUM, SMALL, TINY]
+	"simpleEnum": "TINY",
+
+	"multiEnum": [
+		"GIANT",
+		"SMALL"
+	],
+
+	"sub_parent": {
+		// Value must match with ^[1-9a-z_]+:[1-9a-z_]+$
+		// Must no be empty
+		"resourceLocation": "examplemod:valid_resource_location"
+	}
+}
