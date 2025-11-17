@@ -1,5 +1,6 @@
 package specs;
 
+import org.omegaconfig.OmegaConfig;
 import org.omegaconfig.api.annotations.NumberConditions;
 import org.omegaconfig.api.annotations.Spec;
 import org.omegaconfig.impl.fields.ListField;
@@ -8,7 +9,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-@Spec("number")
+@Spec(value = "number", format = OmegaConfig.FORMAT_CFG)
 public class NumberSpec {
     @Spec.Field
     public static byte aByte = 1;
