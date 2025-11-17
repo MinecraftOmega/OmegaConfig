@@ -122,6 +122,9 @@ public final class ConfigSpec extends ConfigGroup {
     }
 
     void load() throws IOException {
+        if (!this.filePath.toFile().exists()) {
+            this.save();
+        }
         IFormatReader reader = this.format.createReader(this.filePath);
         this.load(this, reader);
         reader.close();
