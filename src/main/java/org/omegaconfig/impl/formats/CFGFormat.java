@@ -75,6 +75,7 @@ public class CFGFormat implements IFormatCodec {
             indent();
             this.buffer.append(formatKey(fieldName)).append(": ");
             this.buffer.append(formatValue(value, type));
+            this.buffer.append("\n");
         }
 
         @Override
@@ -105,6 +106,7 @@ public class CFGFormat implements IFormatCodec {
                 indent();
             }
             this.buffer.append("]");
+            this.buffer.append("\n");
         }
 
         @Override
