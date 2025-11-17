@@ -1,13 +1,15 @@
-package tests;
+package specs;
 
 import org.omegaconfig.api.annotations.NumberConditions;
 import org.omegaconfig.api.annotations.Spec;
+import org.omegaconfig.impl.fields.ListField;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
-@Spec("test")
-public class BaseTestConfig {
+@Spec("number")
+public class NumberSpec {
     @Spec.Field
     public static byte aByte = 1;
 
@@ -57,7 +59,7 @@ public class BaseTestConfig {
         public static String aString = "Hello String!";
 
         @Spec.Field
-        public static List<String> aList = List.of("Hello", "World");
+        public static String[] aList = new String[] { "One", "Two", "Three" };
 
         @Spec.Field
         public static Path aPath = Path.of("config/test.txt");

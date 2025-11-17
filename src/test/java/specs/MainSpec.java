@@ -1,17 +1,14 @@
-package me.srrrapero720.config;
+package specs;
 
-import me.srrrapero720.config.util.CustomFilter;
 import org.omegaconfig.OmegaConfig;
-import org.omegaconfig.api.annotations.Spec;
-import org.omegaconfig.api.annotations.ListConditions;
-import org.omegaconfig.api.annotations.Comment;
-import org.omegaconfig.api.annotations.NumberConditions;
-import org.omegaconfig.api.annotations.StringConditions;
+import org.omegaconfig.api.annotations.*;
 import org.omegaconfig.impl.fields.IntField;
 import org.omegaconfig.impl.fields.StringField;
+import specs.util.EnumPredicateFilter;
+import specs.util.EnumTest;
 
-@Spec(value = "examplemod", format = OmegaConfig.FORMAT_TOML)
-public class Sandbox {
+@Spec(value = "main", backups = 2, format = OmegaConfig.FORMAT_JSON5)
+public class MainSpec {
     @Comment("This is a first-line comment")
     @Comment("Here i can add more details")
     @Comment("Conditions are attached on comments automatically")
@@ -29,26 +26,24 @@ public class Sandbox {
     public static long longField = 0L;
 
     @Comment(value = "Single line comment")
-    @NumberConditions(minFloat = -50f, maxFloat = 50f, math = true, strictMath = true)
     @Spec.Field
-    public static float floatField = 0.0F; // This is a float field, not a double
-
-    @Comment(value = "Single line comment")
-    @Spec.Field
-    public static Yegoslovia simpleEnum = Yegoslovia.TINY;
+    public static EnumTest simpleEnum = EnumTest.TINY;
 
     @Comment("Comment")
-    @ListConditions(stringify = true, filter = CustomFilter.class)
+    @ListConditions(stringify = true, filter = EnumPredicateFilter.class)
     @Spec.Field
-    public static Yegoslovia[] multiEnum = new Yegoslovia[] { Yegoslovia.GIANT, Yegoslovia.SMALL };
+    public static EnumTest[] multiEnum = new EnumTest[] { EnumTest.GIANT, EnumTest.SMALL };
 
     @Spec(value = "sub_parent")
     public static class SubParent {
-
         @StringConditions(allowEmpty = false, value = "^[1-9a-z_]+:[1-9a-z_]+$", mode = StringField.Mode.REGEX)
         @Spec.Field
         public static String resourceLocation = "examplemod:valid_resource_location";
-
     }
 
+    // CAN WORKS WITH ANNOTATIONS OR VIA BUILDER
+    @NumberConditions(minInt = -50, maxInt = 50)
+    @Spec.Field(value = "custonFieldName")
+    @Comment("advanced int field")
+    public IntField instanceIntField = null;
 }

@@ -30,6 +30,12 @@ public class OmegaConfig {
     public static Path getPath() { return CONFIG_PATH; }
     public static void setPath(Path configPath) { CONFIG_PATH = configPath; }
 
+    public static boolean isRegistered(String name) {
+        synchronized (SPECS) {
+            return SPECS.containsKey(name);
+        }
+    }
+
     public static ConfigSpec register(ConfigSpec spec) {
         synchronized (SPECS) {
             SPECS.put(spec.name(), spec);
@@ -343,28 +349,12 @@ public class OmegaConfig {
         while (!Thread.interrupted()) {
             synchronized (SPECS) {
                 for (ConfigSpec spec: SPECS.values()) {
-                    if (!spec.isLoaded()) {
-                        try {
-                            spec.load();
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                            spec.setDirty(true); // mark as dirty to re-save
-                        }
-                    }
-                    if (spec.isDirty()) {
-                        try {
-                            spec.save();
-
-                        } catch (Exception e) {
-                            throw new IllegalStateException("Failed to save spec '" + spec.name() + "'", e);
-                        }
-                    }
-                    if (spec.isReload()) {
-                        try {
-                            spec.load();
-                        } catch (Exception e) {
-                            throw new IllegalStateException("Failed to reload spec '" + spec.name() + "'", e);
-                        }
+                    try {
+                        if (!spec.isLoaded() && !spec.load()) spec.save();
+                        if (spec.isDirty()) spec.save();
+                        if (spec.isReload()) spec.load();
+                    } catch (Exception e) {
+                        throw new IllegalStateException("Failed to process spec '" + spec.name() + "', spec flags=[loaded=" + spec.isLoaded() + ", dirty=" + spec.isDirty() + ", reload=" + spec.isReload() + "]", e);
                     }
                 }
             }

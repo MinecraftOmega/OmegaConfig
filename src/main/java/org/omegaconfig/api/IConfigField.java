@@ -18,8 +18,9 @@ public interface IConfigField<T, S> extends Consumer<T>, Supplier<T> {
      */
     default String id() {
         final ConfigGroup group = this.group();
+        final String groupId = group != null ? group.id() : "";
         final String name = this.name();
-        final String parentName = group != null ? (group.id() + ".") : ""; // spec:parent.config or spec:config
+        final String parentName = group != null ? (groupId + (groupId.endsWith(":") ? "" : ".")) : ""; // spec:parent.config or spec:config
         return parentName + name + (group != null ? "" : ":");
     }
 

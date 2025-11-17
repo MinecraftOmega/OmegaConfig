@@ -23,21 +23,6 @@ println("Gradle Java: ${JavaVersion.current()}")
 println("Building project: ${properties.simplename}")
 println("Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}, Encoding: ${System.getProperty "file.encoding"}")
 
-configurations {
-    library
-}
-
-sourceSets {
-    // SHADOW
-//    test.compileClasspath += configurations.shadow
-//    test.runtimeClasspath += configurations.shadow
-
-    // LIBRARY
-    main.compileClasspath += configurations.library
-    test.compileClasspath += configurations.library
-    test.runtimeClasspath += configurations.library
-}
-
 repositories {
     google()
     mavenCentral()
@@ -46,12 +31,9 @@ repositories {
 }
 
 dependencies {
-    implementation 'it.unimi.dsi:fastutil:8.5.13'
-    compileOnly 'com.github.WaterMediaTeam:modloaders:1.0.1'
-    compileOnly "net.fabricmc:fabric-loader:0.14.19"
 
-    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
 }
 
 // Process target resources with mod info

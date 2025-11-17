@@ -121,13 +121,18 @@ public final class ConfigSpec extends ConfigGroup {
         this.dirty = dirty;
     }
 
-    void load() throws IOException {
+    boolean load() throws IOException {
         if (!this.filePath.toFile().exists()) {
-            this.save();
+            return false;
         }
-        IFormatReader reader = this.format.createReader(this.filePath);
-        this.load(this, reader);
-        reader.close();
+        try {
+            IFormatReader reader = this.format.createReader(this.filePath);
+            this.load(this, reader);
+            reader.close();
+        } catch (Exception e) {
+            return false;
+        }
+        return true;
     }
 
     private void load(ConfigGroup group, IFormatReader reader) {
@@ -166,92 +171,97 @@ public final class ConfigSpec extends ConfigGroup {
 
     private void save(ConfigGroup group, IFormatWriter writer) {
         for (IConfigField<?, ?> field: group.getFields()) {
-            for (String c: field.comments()) {
-                writer.write(c);
-            }
-
-            if (field instanceof ConfigGroup g) {
-                writer.push(g.name());
-                this.save(g, writer);
-                writer.pop();
-                continue;
-            }
-
-            if (field instanceof BaseNumberField<?> numberField) {
-                // SET MATH ALLOW COMMENTS
-                if (numberField.math()) {
-                    writer.write(COMMENT_ALLOWS_MATH + (numberField.strictMath() ? COMMENT_ALLOWS_MATH_STRICT : ""));
+            try {
+                for (String c: field.comments()) {
+                    writer.write(c);
                 }
 
-                // SET MIN/MAX VALUE COMMENTS
-                String min = numberField.minValueString();
-                String max = numberField.maxValueString();
-
-                if (min == null && max != null) {
-                    writer.write(String.format(COMMENT_MUST_BE_GREATER_THAN, max));
-                } else if (min != null && max == null) {
-                    writer.write(String.format(COMMENT_MUST_BE_LESS_THAN, min));
-                } else if (min != null) {
-                    writer.write(String.format(COMMENT_MUST_BE_IN_RANGE, min, max));
-                }
-            }
-
-            if (field instanceof StringField stringField) {
-                // SET STRING STARTWITH COMMENT
-                if (stringField.startsWith.isEmpty() && !stringField.endsWith.isEmpty()) {
-                    writer.write(String.format(COMMENT_MUST_END_WITH, stringField.endsWith));
-                } else if (!stringField.startsWith.isEmpty() && stringField.endsWith.isEmpty()) {
-                    writer.write(String.format(COMMENT_MUST_START_WITH, stringField.startsWith));
-                } else if (!stringField.startsWith.isEmpty()) {
-                    writer.write(String.format(COMMENT_MUST_START_AND_END_WITH, stringField.startsWith, stringField.endsWith));
+                if (field instanceof ConfigGroup g) {
+                    writer.push(g.name());
+                    this.save(g, writer);
+                    writer.pop();
+                    continue;
                 }
 
-                // SET STRING CONDITION AND MODE COMMENT
-                if (stringField.condition != null) {
-                    String comment = switch (stringField.mode) {
-                        case CONTAINS -> COMMENT_MUST_CONTAIN;
-                        case EQUALS -> COMMENT_MUST_EQUALS;
-                        case REGEX -> COMMENT_MUST_MATCH;
-                        case NOT_CONTAINS -> COMMENT_MUST_NOT_CONTAIN;
-                        case NOT_EQUALS -> COMMENT_MUST_NOT_EQUALS;
-                        case NOT_REGEX -> COMMENT_MUST_NOT_MATCH;
-                    };
-                    writer.write(String.format(comment, stringField.condition));
+                if (field instanceof BaseNumberField<?> numberField) {
+                    // SET MATH ALLOW COMMENTS
+                    if (numberField.math()) {
+                        writer.write(COMMENT_ALLOWS_MATH + (numberField.strictMath() ? COMMENT_ALLOWS_MATH_STRICT : ""));
+                    }
+
+                    // SET MIN/MAX VALUE COMMENTS
+                    String min = numberField.minValueString();
+                    String max = numberField.maxValueString();
+
+                    if (min == null && max != null) {
+                        writer.write(String.format(COMMENT_MUST_BE_GREATER_THAN, max));
+                    } else if (min != null && max == null) {
+                        writer.write(String.format(COMMENT_MUST_BE_LESS_THAN, min));
+                    } else if (min != null) {
+                        writer.write(String.format(COMMENT_MUST_BE_IN_RANGE, min, max));
+                    }
                 }
 
-                // SET STRING ALLOW EMPTY COMMENT
-                writer.write(stringField.allowEmpty ? COMMENT_ALLOW_EMPTY : COMMENT_DENY_EMPTY);
-            }
+                if (field instanceof StringField stringField) {
+                    // SET STRING STARTWITH COMMENT
+                    if (stringField.startsWith.isEmpty() && !stringField.endsWith.isEmpty()) {
+                        writer.write(String.format(COMMENT_MUST_END_WITH, stringField.endsWith));
+                    } else if (!stringField.startsWith.isEmpty() && stringField.endsWith.isEmpty()) {
+                        writer.write(String.format(COMMENT_MUST_START_WITH, stringField.startsWith));
+                    } else if (!stringField.startsWith.isEmpty()) {
+                        writer.write(String.format(COMMENT_MUST_START_AND_END_WITH, stringField.startsWith, stringField.endsWith));
+                    }
 
-            if (field instanceof ListField<?> listField) {
-                // SET LIST ALLOW EMPTY AND UNIQUE COMMENT
-                writer.write((listField.allowEmpty
-                        ? COMMENT_ARRAY_ALLOW_EMPTY
-                        : COMMENT_ARRAY_DENY_EMPTY)
-                        + (listField.unique ? " " + COMMENT_ARRAY_VALUES_MUST_BE_UNIQUE : "")
-                );
+                    // SET STRING CONDITION AND MODE COMMENT
+                    if (stringField.condition != null) {
+                        String comment = switch (stringField.mode) {
+                            case CONTAINS -> COMMENT_MUST_CONTAIN;
+                            case EQUALS -> COMMENT_MUST_EQUALS;
+                            case REGEX -> COMMENT_MUST_MATCH;
+                            case NOT_CONTAINS -> COMMENT_MUST_NOT_CONTAIN;
+                            case NOT_EQUALS -> COMMENT_MUST_NOT_EQUALS;
+                            case NOT_REGEX -> COMMENT_MUST_NOT_MATCH;
+                        };
+                        writer.write(String.format(comment, stringField.condition));
+                    }
 
-                // SET LIST LIMIT COMMENT
-                writer.write(String.format(COMMENT_ARRAY_SIZE_MUST_BE_GREATER_THAN, listField.limit));
-            }
-
-            if (field instanceof EnumField<?> enumField) {
-                writer.write(String.format(COMMENT_ENUM_VALID_VALUES, Arrays.toString(enumField.type().getEnumConstants())));
-            }
-
-            if (field instanceof PathField pathField) {
-                writer.write(pathField.runtimePath ? COMMENT_PATH_RUNTIME : COMMENT_PATH_STATIC);
-                if (pathField.fileExists) {
-                    writer.write(COMMENT_PATH_FILE_EXISTS);
+                    // SET STRING ALLOW EMPTY COMMENT
+                    writer.write(stringField.allowEmpty ? COMMENT_ALLOW_EMPTY : COMMENT_DENY_EMPTY);
                 }
-            }
 
-            if (field instanceof ListField<?> listField) {
-                writer.write(field.name(), OmegaConfig.tryEncode(listField.get().toArray(), field.type(), field.subType()), field.type(), field.subType());
-            } else if (field instanceof ArrayField<?> arrayField) {
-                writer.write(field.name(), OmegaConfig.tryEncode(arrayField.get(), field.type(), field.subType()), field.type(), field.subType());
-            } else {
-                writer.write(field.name(), OmegaConfig.tryEncode(field.get(), field.subType()), field.type(), field.subType());
+                if (field instanceof ListField<?> listField) {
+                    // SET LIST ALLOW EMPTY AND UNIQUE COMMENT
+                    writer.write((listField.allowEmpty
+                            ? COMMENT_ARRAY_ALLOW_EMPTY
+                            : COMMENT_ARRAY_DENY_EMPTY)
+                            + (listField.unique ? " " + COMMENT_ARRAY_VALUES_MUST_BE_UNIQUE : "")
+                    );
+
+                    // SET LIST LIMIT COMMENT
+                    writer.write(String.format(COMMENT_ARRAY_SIZE_MUST_BE_GREATER_THAN, listField.limit));
+                }
+
+                if (field instanceof EnumField<?> enumField) {
+                    writer.write(String.format(COMMENT_ENUM_VALID_VALUES, Arrays.toString(enumField.type().getEnumConstants())));
+                }
+
+                if (field instanceof PathField pathField) {
+                    writer.write(pathField.runtimePath ? COMMENT_PATH_RUNTIME : COMMENT_PATH_STATIC);
+                    if (pathField.fileExists) {
+                        writer.write(COMMENT_PATH_FILE_EXISTS);
+                    }
+                }
+
+
+                if (field instanceof ListField<?> listField) {
+                    writer.write(field.name(), OmegaConfig.tryEncode(listField.get().toArray(), field.type(), field.subType()), field.type(), field.subType());
+                } else if (field instanceof ArrayField<?> arrayField) {
+                    writer.write(field.name(), OmegaConfig.tryEncode(arrayField.get(), field.type(), field.subType()), field.type(), field.subType());
+                } else {
+                    writer.write(field.name(), OmegaConfig.tryEncode(field.get(), field.subType()), field.type(), field.subType());
+                }
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to save field '" + field.id() + "' in config spec '" + this.name() + "'", e);
             }
         }
         this.dirty = false;

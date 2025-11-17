@@ -120,6 +120,7 @@ public class PROPFormat implements IFormatCodec {
         @Override
         public void write(String fieldName, String value, Class<?> type, Class<?> subType) {
             this.data.append(Tools.concat("", "", FORMAT_KEY_GROUP_SPLIT, groups))
+                    .append(groups.isEmpty() ? fieldName : FORMAT_KEY_GROUP_SPLIT + fieldName)
                     .append(FORMAT_KEY_DEF_SPLIT)
                     .append(value)
                     .append(FORMAT_KEY_BREAKLINE);
@@ -127,14 +128,20 @@ public class PROPFormat implements IFormatCodec {
 
         @Override
         public void write(String fieldName, String[] values, Class<?> type, Class<?> subType) {
-
+            String arrayString = "[" + String.join(", ", values) + "]";
+            this.data.append(Tools.concat("", "", FORMAT_KEY_GROUP_SPLIT, groups))
+                    .append(groups.isEmpty() ? fieldName : FORMAT_KEY_GROUP_SPLIT + fieldName)
+                    .append(FORMAT_KEY_DEF_SPLIT)
+                    .append(arrayString)
+                    .append(FORMAT_KEY_BREAKLINE);
         }
 
         @Override
         // TODO: implement a check for re-pushing a wrote group
         public void push(String groupName) {
             this.groups.push(groupName);
-            this.data.append(Tools.concat("", "", FORMAT_KEY_GROUP_SPLIT, groups));
+            this.data.append(FORMAT_KEY_BREAKLINE);
+            this.write("Begin of group " + Tools.concat("", "", FORMAT_KEY_GROUP_SPLIT, groups));
         }
 
         @Override

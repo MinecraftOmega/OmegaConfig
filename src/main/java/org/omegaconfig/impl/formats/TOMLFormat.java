@@ -74,7 +74,7 @@ public class TOMLFormat implements IFormatCodec {
             ensureTableHeader();
 
             // Write comments
-            for (String comment : this.comments) {
+            for (String comment: this.comments) {
                 this.buffer.append("# ").append(comment).append("\n");
             }
             this.comments.clear();
@@ -120,7 +120,7 @@ public class TOMLFormat implements IFormatCodec {
         private void ensureTableHeader() {
             String tableName = buildTableName();
             if (!tableName.equals(currentTable) || !tableHeaderWritten) {
-                if (buffer.length() > 0) {
+                if (!buffer.isEmpty()) {
                     buffer.append("\n");
                 }
                 if (!tableName.isEmpty()) {
@@ -296,12 +296,11 @@ public class TOMLFormat implements IFormatCodec {
             if (i >= len || data[i] != '=') {
                 throw new IOException("Expected '=' after key");
             }
-            i++;
 
             // Skip whitespace
-            while (i < len && Character.isWhitespace(data[i])) {
+            do {
                 i++;
-            }
+            } while (i < len && Character.isWhitespace(data[i]));
 
             // Parse value
             String fullKey = buildFullKey(key.toString());
@@ -345,7 +344,6 @@ public class TOMLFormat implements IFormatCodec {
 
         private int parseValue(char[] data, int start, String key) throws IOException {
             int i = start;
-            int len = data.length;
             char c = data[i];
 
             // String
@@ -491,9 +489,8 @@ public class TOMLFormat implements IFormatCodec {
 
             // String
             if (c == '"' || c == '\'') {
-                char quote = c;
                 i++;
-                while (i < len && data[i] != quote) {
+                while (i < len && data[i] != c) {
                     if (data[i] == '\\' && i + 1 < len) {
                         i++;
                         element.append(unescapeChar(data[i]));
@@ -556,12 +553,11 @@ public class TOMLFormat implements IFormatCodec {
                 if (i >= len || data[i] != '=') {
                     throw new IOException("Expected '=' in inline table");
                 }
-                i++;
 
                 // Skip whitespace
-                while (i < len && Character.isWhitespace(data[i])) {
+                do {
                     i++;
-                }
+                } while (i < len && Character.isWhitespace(data[i]));
 
                 // Parse value
                 String fullKey = key + "." + subKey;
