@@ -12,8 +12,11 @@ import java.io.IOException;
 public class WriteTest {
 
 
-    public static void main(String... args) throws IOException {
+    public static void main(String... args) throws IOException, InterruptedException {
         ConfigSpec spec = OmegaConfig.register(Sandbox.class);
         spec.setDirty(true);
+        while (true) {
+            Thread.sleep(5000);
+        }
     }
 }

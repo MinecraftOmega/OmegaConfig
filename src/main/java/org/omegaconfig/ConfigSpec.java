@@ -151,6 +151,8 @@ public final class ConfigSpec extends ConfigGroup {
                 }
             }
         }
+        this.loaded = true;
+        this.reload = false;
     }
 
     void save() throws IOException {
@@ -249,6 +251,7 @@ public final class ConfigSpec extends ConfigGroup {
                 writer.write(field.name(), OmegaConfig.tryEncode(field.get(), field.subType()), field.type(), field.subType());
             }
         }
+        this.dirty = false;
     }
 
 

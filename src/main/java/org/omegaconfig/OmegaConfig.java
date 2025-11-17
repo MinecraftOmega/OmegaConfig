@@ -18,6 +18,7 @@ import static org.omegaconfig.Tools.toBoxed;
 
 public class OmegaConfig {
     private static final Thread RT_WORKER = new Thread(OmegaConfig::run);
+    public static final String ID = "omegaconfig";
 
     // FORMATS
     public static final String FORMAT_PROPERTIES = "properties";
@@ -353,6 +354,7 @@ public class OmegaConfig {
                     if (spec.isDirty()) {
                         try {
                             spec.save();
+
                         } catch (Exception e) {
                             throw new IllegalStateException("Failed to save spec '" + spec.name() + "'", e);
                         }
@@ -367,6 +369,12 @@ public class OmegaConfig {
                 }
             }
         }
+    }
+
+    public static void init() {
+        OmegaConfigRegistry.init();
+        // This method is intentionally left empty.
+        // It can be used for any initialization logic if needed in the future.
     }
 
     static {

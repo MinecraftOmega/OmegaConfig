@@ -42,14 +42,26 @@ repositories {
     google()
     mavenCentral()
     maven { url 'https://jitpack.io' }
+    maven { url "https://repo.spongepowered.org/maven" }
 }
 
 dependencies {
     implementation 'it.unimi.dsi:fastutil:8.5.13'
+    compileOnly 'com.github.WaterMediaTeam:modloaders:1.0.1'
+    compileOnly "net.fabricmc:fabric-loader:0.14.19"
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
 }
+
+// Process target resources with mod info
+processResources {
+    outputs.upToDateWhen { false }
+    filesMatching(['META-INF/mods.toml', 'META-INF/neoforge.mods.toml', 'pack.mcmeta', 'fabric.mod.json', "watermedia/version.cfg"]) {
+        expand(project.properties)
+    }
+}
+
 
 jar {
     duplicatesStrategy = DuplicatesStrategy.WARN
