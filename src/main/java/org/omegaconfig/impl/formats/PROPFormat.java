@@ -18,20 +18,9 @@ public class PROPFormat implements IFormatCodec {
     public static final String FORMAT_KEY_COMMENT_LINE = "#";
     public static final char FORMAT_KEY_GROUP_SPLIT = '.';
 
-    @Override
-    public String id() {
-        return OmegaConfig.FORMAT_PROPERTIES;
-    }
-
-    @Override
-    public String extension() {
-        return "." + id();
-    }
-
-    @Override
-    public String mimeType() {
-        return "text/x-java-properties";
-    }
+    @Override public String id() { return OmegaConfig.FORMAT_PROPERTIES; }
+    @Override public String extension() { return "." + id(); }
+    @Override public String mimeType() { return "text/x-java-properties"; }
 
     @Override
     public IFormatReader createReader(Path filePath) throws IOException {
