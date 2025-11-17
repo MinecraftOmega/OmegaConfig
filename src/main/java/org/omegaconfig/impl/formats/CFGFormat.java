@@ -64,28 +64,30 @@ public class CFGFormat implements IFormatCodec {
 
         @Override
         public void write(String fieldName, String value, Class<?> type, Class<?> subType) {
-            writeComments();
-
-            if (!firstInMapping) {
+            // Add blank line before comments (if not first and has comments)
+            if (!firstInMapping && !comments.isEmpty()) {
                 this.buffer.append("\n");
             }
-            firstInMapping = false;
+
+            writeComments();
 
             // Write key
             indent();
             this.buffer.append(formatKey(fieldName)).append(": ");
             this.buffer.append(formatValue(value, type));
             this.buffer.append("\n");
+
+            firstInMapping = false;
         }
 
         @Override
         public void write(String fieldName, String[] values, Class<?> type, Class<?> subType) {
-            writeComments();
-
-            if (!firstInMapping) {
+            // Add blank line before comments (if not first and has comments)
+            if (!firstInMapping && !comments.isEmpty()) {
                 this.buffer.append("\n");
             }
-            firstInMapping = false;
+
+            writeComments();
 
             // Write key
             indent();
@@ -107,16 +109,18 @@ public class CFGFormat implements IFormatCodec {
             }
             this.buffer.append("]");
             this.buffer.append("\n");
+
+            firstInMapping = false;
         }
 
         @Override
         public void push(String groupName) {
-            writeComments();
-
-            if (!firstInMapping) {
+            // Add blank line before comments (if not first and has comments)
+            if (!firstInMapping && !comments.isEmpty()) {
                 this.buffer.append("\n");
             }
-            firstInMapping = false;
+
+            writeComments();
 
             indent();
             this.buffer.append(formatKey(groupName)).append(": {\n");
