@@ -10,7 +10,7 @@ import org.omegaconfig.api.annotations.StringConditions;
 import org.omegaconfig.impl.fields.IntField;
 import org.omegaconfig.impl.fields.StringField;
 
-@Spec(value = "examplemod", format = OmegaConfig.FORMAT_JSON5)
+@Spec(value = "examplemod", format = OmegaConfig.FORMAT_TOML)
 public class Sandbox {
     @Comment("This is a first-line comment")
     @Comment("Here i can add more details")

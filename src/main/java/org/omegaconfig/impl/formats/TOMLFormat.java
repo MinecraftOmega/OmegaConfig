@@ -516,7 +516,7 @@ public class TOMLFormat implements IFormatCodec {
             }
 
             // Trim trailing whitespace
-            while (element.length() > 0 && Character.isWhitespace(element.charAt(element.length() - 1))) {
+            while (!element.isEmpty() && Character.isWhitespace(element.charAt(element.length() - 1))) {
                 element.setLength(element.length() - 1);
             }
 
@@ -564,7 +564,7 @@ public class TOMLFormat implements IFormatCodec {
                 }
 
                 // Parse value
-                String fullKey = key + "." + subKey.toString();
+                String fullKey = key + "." + subKey;
                 i = parseValue(data, i, fullKey);
 
                 // Skip whitespace
@@ -581,7 +581,7 @@ public class TOMLFormat implements IFormatCodec {
             throw new IOException("Unclosed inline table");
         }
 
-        private int parseLiteral(char[] data, int start, String key) throws IOException {
+        private int parseLiteral(char[] data, int start, String key) {
             int i = start;
             int len = data.length;
             StringBuilder value = new StringBuilder();
