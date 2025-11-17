@@ -371,7 +371,7 @@ public class OmegaConfig {
             try {
                 Thread.sleep(5000);
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                Thread.currentThread().interrupt();
             }
         }
         Thread.currentThread().interrupt();
