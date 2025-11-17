@@ -13,6 +13,17 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 
+/**
+ * CFG Format implementation - a superset of JSON with additional features.
+ * CFG supports:
+ * - Comments with #
+ * - Keys as strings or identifiers
+ * - Separators: : or =
+ * - Newlines as separators (trailing commas optional)
+ * - Nested mappings and lists
+ * - Cross-references ${...}
+ * - Include directives @'file.cfg'
+ */
 public class CFGFormat implements IFormatCodec {
     @Override public String id() { return OmegaConfig.FORMAT_CFG; }
     @Override public String extension() { return "." + this.id(); }
@@ -33,14 +44,17 @@ public class CFGFormat implements IFormatCodec {
         private final BufferedWriter writer;
         private final StringBuilder buffer = new StringBuilder();
         private final List<String> comments = new ArrayList<>();
-        private String currentSection = "";
-        private boolean sectionHeaderWritten = false;
+        private boolean firstInMapping = true;
+        private int indentLevel = 0;
 
         public FormatWriter(Path path) throws IOException {
             if (!path.toFile().getParentFile().exists() && !path.toFile().getParentFile().mkdirs()) {
                 throw new IOException("Failed to create parent directories for " + path);
             }
             this.writer = new BufferedWriter(new FileWriter(path.toFile(), StandardCharsets.UTF_8));
+            // CFG top-level is a mapping
+            this.buffer.append("{\n");
+            this.indentLevel = 1;
         }
 
         @Override
@@ -50,102 +64,105 @@ public class CFGFormat implements IFormatCodec {
 
         @Override
         public void write(String fieldName, String value, Class<?> type, Class<?> subType) {
-            ensureSectionHeader();
+            writeComments();
 
-            // Write comments
-            for (String comment : this.comments) {
-                this.buffer.append("# ").append(comment).append("\n");
+            if (!firstInMapping) {
+                this.buffer.append("\n");
             }
-            this.comments.clear();
+            firstInMapping = false;
 
-            // Write key = value
-            this.buffer.append(escapeKey(fieldName)).append(" = ");
+            // Write key
+            indent();
+            this.buffer.append(formatKey(fieldName)).append(": ");
             this.buffer.append(formatValue(value, type));
-            this.buffer.append("\n");
         }
 
         @Override
         public void write(String fieldName, String[] values, Class<?> type, Class<?> subType) {
-            ensureSectionHeader();
+            writeComments();
 
-            // Write comments
-            for (String comment : this.comments) {
-                this.buffer.append("# ").append(comment).append("\n");
+            if (!firstInMapping) {
+                this.buffer.append("\n");
             }
-            this.comments.clear();
+            firstInMapping = false;
+
+            // Write key
+            indent();
+            this.buffer.append(formatKey(fieldName)).append(": ");
 
             // Write array
-            this.buffer.append(escapeKey(fieldName)).append(" = [");
-
+            this.buffer.append("[");
             if (values.length > 0) {
+                this.buffer.append("\n");
                 for (int i = 0; i < values.length; i++) {
-                    if (i > 0) {
-                        this.buffer.append(", ");
+                    indent();
+                    this.buffer.append("  ").append(formatValue(values[i], subType));
+                    if (i < values.length - 1) {
+                        this.buffer.append(",");
                     }
-                    this.buffer.append(formatValue(values[i], subType));
+                    this.buffer.append("\n");
                 }
+                indent();
             }
-
-            this.buffer.append("]\n");
+            this.buffer.append("]");
         }
 
         @Override
         public void push(String groupName) {
+            writeComments();
+
+            if (!firstInMapping) {
+                this.buffer.append("\n");
+            }
+            firstInMapping = false;
+
+            indent();
+            this.buffer.append(formatKey(groupName)).append(": {\n");
+
             this.group.push(groupName);
-            this.sectionHeaderWritten = false;
+            this.indentLevel++;
+            this.firstInMapping = true;
         }
 
         @Override
         public void pop() {
             if (!this.group.isEmpty()) {
                 this.group.pop();
-                this.sectionHeaderWritten = false;
+                this.indentLevel--;
+                this.buffer.append("\n");
+                indent();
+                this.buffer.append("}");
+                this.firstInMapping = false;
             }
         }
 
         @Override
         public void close() throws IOException {
+            this.buffer.append("\n}\n");
             this.writer.write(this.buffer.toString());
             this.writer.flush();
             this.writer.close();
         }
 
-        private void ensureSectionHeader() {
-            String sectionName = buildSectionName();
-            if (!sectionName.equals(currentSection) || !sectionHeaderWritten) {
-                if (!buffer.isEmpty()) {
-                    buffer.append("\n");
-                }
-                if (!sectionName.isEmpty()) {
-                    buffer.append("[").append(sectionName).append("]\n");
-                }
-                currentSection = sectionName;
-                sectionHeaderWritten = true;
+        private void writeComments() {
+            for (String comment : this.comments) {
+                indent();
+                this.buffer.append("# ").append(comment).append("\n");
             }
+            this.comments.clear();
         }
 
-        private String buildSectionName() {
-            if (group.isEmpty()) {
-                return "";
-            }
-            StringBuilder sb = new StringBuilder();
-            Iterator<String> it = group.iterator();
-            while (it.hasNext()) {
-                sb.append(escapeKey(it.next()));
-                if (it.hasNext()) {
-                    sb.append(".");
-                }
-            }
-            return sb.toString();
+        private void indent() {
+            this.buffer.append("  ".repeat(this.indentLevel));
         }
 
-        private String escapeKey(String key) {
-            // Simple keys don't need quotes
-            if (key.matches("[A-Za-z0-9_-]+")) {
+        private String formatKey(String key) {
+            // Use identifier if possible (alphanumeric + underscore)
+            if (key.matches("[A-Za-z_][A-Za-z0-9_]*")) {
                 return key;
             }
-            // Quote and escape if needed
-            return "\"" + key.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+            // Otherwise use quoted string
+            return "\"" + escapeString(key) + "\"";
         }
 
         private String formatValue(String value, Class<?> type) {
@@ -156,6 +173,11 @@ public class CFGFormat implements IFormatCodec {
             // Boolean
             if (Boolean.class.isAssignableFrom(type) || boolean.class.isAssignableFrom(type)) {
                 return value.toLowerCase();
+            }
+
+            // Null
+            if (value == null || value.equals("null")) {
+                return "null";
             }
 
             // Numbers
@@ -178,14 +200,16 @@ public class CFGFormat implements IFormatCodec {
                      .replace("\"", "\\\"")
                      .replace("\n", "\\n")
                      .replace("\r", "\\r")
-                     .replace("\t", "\\t");
+                     .replace("\t", "\\t")
+                     .replace("\b", "\\b")
+                     .replace("\f", "\\f");
         }
     }
 
     public static class FormatReader implements IFormatReader {
         private final LinkedHashMap<String, Object> values = new LinkedHashMap<>();
         private final Stack<String> group = new Stack<>();
-        private String currentSection = "";
+        private final Map<String, Object> rawParsedData = new LinkedHashMap<>();
 
         public FormatReader(Path path) throws IOException {
             char[] data = new String(Tools.readAllBytes(path), StandardCharsets.UTF_8).toCharArray();
@@ -193,90 +217,62 @@ public class CFGFormat implements IFormatCodec {
         }
 
         private void parseCfg(char[] data) throws IOException {
-            int i = 0;
-            int len = data.length;
+            int i = skipWhitespaceAndComments(data, 0, data.length);
+
+            // CFG top-level should be a mapping
+            if (i >= data.length || data[i] != '{') {
+                throw new IOException("CFG file must start with '{'");
+            }
+
+            i++; // Skip opening brace
+            parseMapping(data, i, data.length, "");
+        }
+
+        private int parseMapping(char[] data, int start, int len, String prefix) throws IOException {
+            int i = start;
+            boolean firstEntry = true;
 
             while (i < len) {
-                i = skipWhitespace(data, i, len);
+                i = skipWhitespaceAndComments(data, i, len);
                 if (i >= len) break;
 
-                char c = data[i];
-
-                // Skip comments
-                if (c == '#' || (c == '/' && i + 1 < len && data[i + 1] == '/')) {
-                    i = skipToEndOfLine(data, i, len);
-                    continue;
+                // Check for end of mapping
+                if (data[i] == '}') {
+                    return i + 1;
                 }
 
-                // Section header
-                if (c == '[') {
-                    i = parseSectionHeader(data, i, len);
-                    continue;
+                // Skip comma or newline separator
+                if (!firstEntry && (data[i] == ',' || data[i] == '\n')) {
+                    i++;
+                    i = skipWhitespaceAndComments(data, i, len);
+                    if (i >= len) break;
+                    if (data[i] == '}') {
+                        return i + 1;
+                    }
                 }
 
-                // Key-value pair
-                if (isKeyStart(c)) {
-                    i = parseKeyValue(data, i, len);
-                    continue;
+                firstEntry = false;
+
+                // Parse key
+                StringBuilder key = new StringBuilder();
+                i = parseKey(data, i, len, key);
+
+                // Skip whitespace
+                i = skipWhitespaceAndComments(data, i, len);
+
+                // Expect ':' or '='
+                if (i >= len || (data[i] != ':' && data[i] != '=')) {
+                    throw new IOException("Expected ':' or '=' after key at position " + i);
                 }
+                i++; // Skip separator
 
-                i++;
+                // Skip whitespace
+                i = skipWhitespaceAndComments(data, i, len);
+
+                // Parse value
+                String fullKey = prefix.isEmpty() ? key.toString() : prefix + "." + key.toString();
+                i = parseValue(data, i, len, fullKey);
             }
-        }
-
-        private int parseSectionHeader(char[] data, int start, int len) throws IOException {
-            int i = start + 1;
-
-            // Skip whitespace
-            i = skipWhitespace(data, i, len);
-
-            // Parse section name
-            StringBuilder sectionName = new StringBuilder();
-            while (i < len && data[i] != ']') {
-                if (data[i] == '\n') {
-                    throw new IOException("Unclosed section header at position " + i);
-                }
-                sectionName.append(data[i]);
-                i++;
-            }
-
-            if (i >= len) {
-                throw new IOException("Unclosed section header");
-            }
-
-            // Skip closing bracket
-            i++;
-
-            currentSection = sectionName.toString().trim();
-
-            // Skip to end of line
-            return skipToEndOfLine(data, i, len);
-        }
-
-        private int parseKeyValue(char[] data, int start, int len) throws IOException {
-            int i = start;
-
-            // Parse key
-            StringBuilder key = new StringBuilder();
-            i = parseKey(data, i, len, key);
-
-            // Skip whitespace
-            i = skipWhitespace(data, i, len);
-
-            // Expect '=' or ':'
-            if (i >= len || (data[i] != '=' && data[i] != ':')) {
-                throw new IOException("Expected '=' or ':' after key at position " + i);
-            }
-
-            // Skip separator
-            i++;
-
-            // Skip whitespace
-            i = skipWhitespace(data, i, len);
-
-            // Parse value
-            String fullKey = buildFullKey(key.toString());
-            i = parseValue(data, i, len, fullKey);
 
             return i;
         }
@@ -285,7 +281,7 @@ public class CFGFormat implements IFormatCodec {
             int i = start;
             char c = data[i];
 
-            // Quoted key
+            // Quoted key (single or double quotes)
             if (c == '"' || c == '\'') {
                 char quote = c;
                 i++;
@@ -303,8 +299,11 @@ public class CFGFormat implements IFormatCodec {
                 }
                 i++; // Skip closing quote
             } else {
-                // Bare key
-                while (i < len && (Character.isLetterOrDigit(data[i]) || data[i] == '_' || data[i] == '-' || data[i] == '.')) {
+                // Identifier key
+                if (!Character.isLetter(c) && c != '_') {
+                    throw new IOException("Invalid key start character at position " + i);
+                }
+                while (i < len && (Character.isLetterOrDigit(data[i]) || data[i] == '_')) {
                     key.append(data[i]);
                     i++;
                 }
@@ -316,12 +315,12 @@ public class CFGFormat implements IFormatCodec {
         private int parseValue(char[] data, int start, int len, String key) throws IOException {
             int i = start;
             if (i >= len) {
-                throw new IOException("Expected value after '=' at position " + i);
+                throw new IOException("Expected value after separator at position " + i);
             }
 
             char c = data[i];
 
-            // String
+            // String (single or double quotes)
             if (c == '"' || c == '\'') {
                 return parseString(data, i, len, key);
             }
@@ -331,7 +330,28 @@ public class CFGFormat implements IFormatCodec {
                 return parseArray(data, i, len, key);
             }
 
-            // Literal (boolean, number)
+            // Nested mapping
+            if (c == '{') {
+                i++; // Skip opening brace
+                return parseMapping(data, i, len, key);
+            }
+
+            // Cross-reference ${...}
+            if (c == '$' && i + 1 < len && data[i + 1] == '{') {
+                return parseReference(data, i, len, key);
+            }
+
+            // Include @'file'
+            if (c == '@') {
+                return parseInclude(data, i, len, key);
+            }
+
+            // Special values `...`
+            if (c == '`') {
+                return parseSpecialValue(data, i, len, key);
+            }
+
+            // Literal (boolean, number, null)
             return parseLiteral(data, i, len, key);
         }
 
@@ -345,8 +365,6 @@ public class CFGFormat implements IFormatCodec {
                 if (data[i] == '\\' && i + 1 < len) {
                     i++;
                     value.append(unescapeChar(data[i]));
-                } else if (data[i] == '\n') {
-                    throw new IOException("Newline not allowed in single-line string at position " + i);
                 } else {
                     value.append(data[i]);
                 }
@@ -354,20 +372,21 @@ public class CFGFormat implements IFormatCodec {
             }
 
             if (i >= len) {
-                throw new IOException("Unclosed string");
+                throw new IOException("Unclosed string at position " + i);
             }
 
             i++; // Skip closing quote
             values.put(key, value.toString());
-            return skipToEndOfLine(data, i, len);
+            return i;
         }
 
         private int parseArray(char[] data, int start, int len, String key) throws IOException {
             int i = start + 1;
             List<String> array = new ArrayList<>();
+            boolean firstElement = true;
 
             while (i < len) {
-                i = skipWhitespace(data, i, len);
+                i = skipWhitespaceAndComments(data, i, len);
                 if (i >= len) {
                     throw new IOException("Unclosed array");
                 }
@@ -376,27 +395,27 @@ public class CFGFormat implements IFormatCodec {
                 if (data[i] == ']') {
                     i++;
                     values.put(key, array.toArray(new String[0]));
-                    return skipToEndOfLine(data, i, len);
+                    return i;
                 }
 
-                // Skip comments
-                if (data[i] == '#' || (data[i] == '/' && i + 1 < len && data[i + 1] == '/')) {
-                    i = skipToEndOfLine(data, i, len);
-                    continue;
+                // Skip comma or newline separator
+                if (!firstElement && (data[i] == ',' || data[i] == '\n')) {
+                    i++;
+                    i = skipWhitespaceAndComments(data, i, len);
+                    if (i >= len) break;
+                    if (data[i] == ']') {
+                        i++;
+                        values.put(key, array.toArray(new String[0]));
+                        return i;
+                    }
                 }
+
+                firstElement = false;
 
                 // Parse array element
                 StringBuilder element = new StringBuilder();
                 i = parseArrayElement(data, i, len, element);
                 array.add(element.toString());
-
-                // Skip whitespace
-                i = skipWhitespace(data, i, len);
-
-                // Check for comma
-                if (i < len && data[i] == ',') {
-                    i++;
-                }
             }
 
             throw new IOException("Unclosed array");
@@ -426,8 +445,8 @@ public class CFGFormat implements IFormatCodec {
                 return i;
             }
 
-            // Literal (number, boolean)
-            while (i < len && data[i] != ',' && data[i] != ']' && data[i] != '\n' && data[i] != '#' && !Character.isWhitespace(data[i])) {
+            // Literal (number, boolean, null)
+            while (i < len && !Character.isWhitespace(data[i]) && data[i] != ',' && data[i] != ']' && data[i] != '#') {
                 element.append(data[i]);
                 i++;
             }
@@ -435,29 +454,111 @@ public class CFGFormat implements IFormatCodec {
             return i;
         }
 
-        private int parseLiteral(char[] data, int start, int len, String key) {
+        private int parseLiteral(char[] data, int start, int len, String key) throws IOException {
             int i = start;
             StringBuilder value = new StringBuilder();
 
-            while (i < len && data[i] != '\n' && data[i] != '#' && !(data[i] == '/' && i + 1 < len && data[i + 1] == '/')) {
-                if (!Character.isWhitespace(data[i])) {
-                    value.append(data[i]);
-                } else if (value.length() > 0) {
-                    // Stop at first whitespace after non-whitespace content
-                    break;
-                }
+            while (i < len && !Character.isWhitespace(data[i]) && data[i] != ',' && data[i] != '}' && data[i] != ']' && data[i] != '#') {
+                value.append(data[i]);
                 i++;
             }
 
             String literal = value.toString().trim();
             values.put(key, literal);
-            return skipToEndOfLine(data, i, len);
+            return i;
         }
 
-        private int skipWhitespace(char[] data, int start, int len) {
-            int i = start;
-            while (i < len && Character.isWhitespace(data[i]) && data[i] != '\n') {
+        private int parseReference(char[] data, int start, int len, String key) throws IOException {
+            // Parse ${...} cross-reference
+            // For now, store as string for basic support
+            int i = start + 2; // Skip ${
+            StringBuilder ref = new StringBuilder("${");
+
+            while (i < len && data[i] != '}') {
+                ref.append(data[i]);
                 i++;
+            }
+
+            if (i >= len) {
+                throw new IOException("Unclosed reference");
+            }
+
+            ref.append('}');
+            i++; // Skip closing }
+
+            values.put(key, ref.toString());
+            return i;
+        }
+
+        private int parseInclude(char[] data, int start, int len, String key) throws IOException {
+            // Parse @'file.cfg' include directive
+            // For now, store as string for basic support
+            int i = start + 1; // Skip @
+
+            i = skipWhitespaceAndComments(data, i, len);
+            if (i >= len || (data[i] != '"' && data[i] != '\'')) {
+                throw new IOException("Expected quoted filename after @ at position " + i);
+            }
+
+            char quote = data[i];
+            i++;
+            StringBuilder filename = new StringBuilder("@");
+            filename.append(quote);
+
+            while (i < len && data[i] != quote) {
+                filename.append(data[i]);
+                i++;
+            }
+
+            if (i >= len) {
+                throw new IOException("Unclosed include filename");
+            }
+
+            filename.append(quote);
+            i++; // Skip closing quote
+
+            values.put(key, filename.toString());
+            return i;
+        }
+
+        private int parseSpecialValue(char[] data, int start, int len, String key) throws IOException {
+            // Parse `...` special values
+            // For now, store as string for basic support
+            int i = start + 1; // Skip opening `
+            StringBuilder special = new StringBuilder("`");
+
+            while (i < len && data[i] != '`') {
+                special.append(data[i]);
+                i++;
+            }
+
+            if (i >= len) {
+                throw new IOException("Unclosed special value");
+            }
+
+            special.append('`');
+            i++; // Skip closing `
+
+            values.put(key, special.toString());
+            return i;
+        }
+
+        private int skipWhitespaceAndComments(char[] data, int start, int len) {
+            int i = start;
+            while (i < len) {
+                // Skip whitespace
+                if (Character.isWhitespace(data[i])) {
+                    i++;
+                    continue;
+                }
+
+                // Skip comments
+                if (data[i] == '#') {
+                    i = skipToEndOfLine(data, i, len);
+                    continue;
+                }
+
+                break;
             }
             return i;
         }
@@ -473,10 +574,6 @@ public class CFGFormat implements IFormatCodec {
             return i;
         }
 
-        private boolean isKeyStart(char c) {
-            return Character.isLetterOrDigit(c) || c == '_' || c == '"' || c == '\'';
-        }
-
         private char unescapeChar(char c) {
             return switch (c) {
                 case 'n' -> '\n';
@@ -489,13 +586,6 @@ public class CFGFormat implements IFormatCodec {
                 case '\'' -> '\'';
                 default -> c;
             };
-        }
-
-        private String buildFullKey(String key) {
-            if (currentSection.isEmpty()) {
-                return key;
-            }
-            return currentSection + "." + key;
         }
 
         @Override
