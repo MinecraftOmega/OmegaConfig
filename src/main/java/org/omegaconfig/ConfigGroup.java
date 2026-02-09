@@ -132,6 +132,10 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
         this.fields.add(field);
     }
 
+    void dispose(ConfigGroup active) {
+        this.fields.remove(active);
+    }
+
     @Override
     public void reset() {
         throw new UnsupportedOperationException("Groups cannot handle values");

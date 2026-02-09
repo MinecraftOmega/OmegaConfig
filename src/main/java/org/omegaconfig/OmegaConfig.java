@@ -83,7 +83,7 @@ public class OmegaConfig {
         for (Field field: specClass.getDeclaredFields()) {
             if (isStatic != Modifier.isStatic(field.getModifiers())) continue; // IGNORE NOT MATCHING CONTEXT
             final Spec.Field specField = Tools.specFieldOf(field);
-            final Class<?> specFieldClass = Tools.toBoxed(field.getType());
+            final Class<?> specFieldType = Tools.typeOf(field);
 
             if (specField == null)
                 continue;
@@ -91,8 +91,8 @@ public class OmegaConfig {
             // DEFINE BY TYPE, CAN BE REPLICATED
             ConfigSpec.BaseFieldBuilder<?, ?> fieldBuilder;
             final String name = specField.value().isEmpty() ? field.getName() : specField.value();
-            if (specFieldClass == Boolean.class) fieldBuilder = builder.defineBoolean(name, field, instance);
-            else if (specFieldClass == Byte.class) {
+            if (specFieldType == Boolean.class) fieldBuilder = builder.defineBoolean(name, field, instance);
+            else if (specFieldType == Byte.class) {
                 ConfigSpec.ByteFieldBuilder numberFieldBuilder = builder.defineByte(name, field, instance);
                 NumberConditions conditions = field.getAnnotation(NumberConditions.class);
                 if (conditions != null) {
@@ -103,7 +103,7 @@ public class OmegaConfig {
                 }
 
                 fieldBuilder = numberFieldBuilder;
-            } else if (specFieldClass == Short.class) {
+            } else if (specFieldType == Short.class) {
                 ConfigSpec.ShortFieldBuilder numberFieldBuilder = builder.defineShort(name, field, instance);
                 NumberConditions conditions = field.getAnnotation(NumberConditions.class);
                 if (conditions != null) {
@@ -114,7 +114,7 @@ public class OmegaConfig {
                 }
 
                 fieldBuilder = numberFieldBuilder;
-            } else if (specFieldClass == Integer.class) {
+            } else if (specFieldType == Integer.class) {
                 ConfigSpec.IntFieldBuilder numberFieldBuilder = builder.defineInt(name, field, instance);
                 NumberConditions conditions = field.getAnnotation(NumberConditions.class);
                 if (conditions != null) {
@@ -125,7 +125,7 @@ public class OmegaConfig {
                 }
 
                 fieldBuilder = numberFieldBuilder;
-            } else if (specFieldClass == Long.class) {
+            } else if (specFieldType == Long.class) {
                 ConfigSpec.LongFieldBuilder numberFieldBuilder = builder.defineLong(name, field, instance);
                 NumberConditions conditions = field.getAnnotation(NumberConditions.class);
                 if (conditions != null) {
@@ -136,7 +136,7 @@ public class OmegaConfig {
                 }
 
                 fieldBuilder = numberFieldBuilder;
-            } else if (specFieldClass == Float.class) {
+            } else if (specFieldType == Float.class) {
                 ConfigSpec.FloatFieldBuilder numberFieldBuilder = builder.defineFloat(name, field, instance);
                 NumberConditions conditions = field.getAnnotation(NumberConditions.class);
                 if (conditions != null) {
@@ -147,7 +147,7 @@ public class OmegaConfig {
                 }
 
                 fieldBuilder = numberFieldBuilder;
-            } else if (specFieldClass == Double.class) {
+            } else if (specFieldType == Double.class) {
                 ConfigSpec.DoubleFieldBuilder numberFieldBuilder = builder.defineDouble(name, field, instance);
                 NumberConditions conditions = field.getAnnotation(NumberConditions.class);
                 if (conditions != null) {
@@ -158,7 +158,7 @@ public class OmegaConfig {
                 }
 
                 fieldBuilder = numberFieldBuilder;
-            } else if (specFieldClass == String.class) {
+            } else if (specFieldType == String.class) {
                 ConfigSpec.StringFieldBuilder stringFieldBuilder = builder.defineString(name, field, instance);
 
                 // STRING CONDITIONS
@@ -173,21 +173,31 @@ public class OmegaConfig {
                 }
 
                 fieldBuilder = stringFieldBuilder;
-            } else if (specFieldClass == Path.class) {
+            } else if (specFieldType == Path.class) {
                 fieldBuilder = builder.definePath(name, field, instance);
             }
-            else if (specFieldClass == Character.class) fieldBuilder = builder.defineChar(name, field, instance);
-            else if (specFieldClass == List.class) fieldBuilder = builder.defineList(name, field, instance, Tools.subTypeOf(field));
-            else if (specFieldClass.isArray()) fieldBuilder = builder.defineArray(name, field, instance, Tools.subTypeOf(field));
-            else if (Enum.class.isAssignableFrom(specFieldClass)) fieldBuilder = builder.defineEnum(name, field, instance);
+            else if (specFieldType == Character.class) fieldBuilder = builder.defineChar(name, field, instance);
+            else if (specFieldType == List.class) fieldBuilder = builder.defineList(name, field, instance, Tools.subTypeOf(field));
+            else if (specFieldType.isArray()) fieldBuilder = builder.defineArray(name, field, instance, Tools.subTypeOf(field));
+            else if (Enum.class.isAssignableFrom(specFieldType)) fieldBuilder = builder.defineEnum(name, field, instance);
+            else if (specFieldType.isAnnotationPresent(Spec.class)) {
+                if (!Modifier.isFinal(specFieldType.getModifiers()))
+                    throw new IllegalArgumentException("Field '" + name + "' of type '" + specFieldType.getName() + "' must be final to be used as nested Spec");
+
+                Object nestedInstance = Tools.valueFrom(field, instance);
+                Spec nestedSpec = Tools.specOf(specFieldType);
+
+                builder.push(nestedSpec.value());
+                register$iterateClass(nestedInstance, specFieldType, builder, false /* Reading an object instance field, we asume you need those */);
+                builder.pop();
+
+                continue; // SKIP END CALL BELOW
+            }
             else fieldBuilder = builder.define(name, field, instance);
 
             // COMMENTS
-            Comment.Comments comments = field.getAnnotation(Comment.Comments.class);
-            if (comments != null) {
-                for (Comment comment: comments.value()) {
-                    fieldBuilder.comments(comment.value());
-                }
+            for (Comment comment: field.getAnnotationsByType(Comment.class)) {
+                fieldBuilder.comments(comment.value());
             }
 
             // END
@@ -197,11 +207,25 @@ public class OmegaConfig {
         // THEN, ITERATE CHILD CLASSES
         for (Class<?> clazz: specClass.getDeclaredClasses()) {
             final Spec spec = Tools.specOfWeak(clazz);
-            if (spec == null) continue; // IGNORE NOT ANNOTATED CLASSES
+            if (spec == null || spec.disableStatic()) continue; // IGNORE NOT ANNOTATED CLASSES
+
+            Object childInstance = clazz;
+            boolean childStatic = true;
+            try {
+                var ctor = clazz.getDeclaredConstructor();
+                ctor.setAccessible(true);
+                childInstance = ctor.newInstance();
+                childStatic = false;
+            } catch (ReflectiveOperationException ignored) {}
 
             builder.push(spec.value());
-            register$iterateClass(clazz, clazz, builder, isStatic);
+            register$iterateClass(childInstance, clazz, builder, childStatic);
             builder.pop();
+        }
+
+        // COMMENTS INTO SPEC
+        for (Comment comment: specClass.getAnnotationsByType(Comment.class)) {
+            builder.comments(comment.value());
         }
     }
 

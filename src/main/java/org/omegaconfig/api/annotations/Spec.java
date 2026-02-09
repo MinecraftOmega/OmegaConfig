@@ -55,6 +55,12 @@ public @interface Spec {
      */
     String format() default OmegaConfig.FORMAT_PROPERTIES;
 
+    /**
+     * Disables static declaration on this config spec, useful when you want to use the spec on multiple fields
+     * @return false by default
+     */
+    boolean disableStatic() default false;
+
 
     @Documented
     @Retention(RetentionPolicy.RUNTIME)

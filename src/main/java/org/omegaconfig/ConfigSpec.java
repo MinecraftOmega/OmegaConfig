@@ -165,6 +165,10 @@ public final class ConfigSpec extends ConfigGroup {
 
     void save() throws IOException {
         IFormatWriter writer = this.format.createWritter(this.filePath);
+        System.out.println(this.comments().length == 0 ? "Empty" : "Has " + this.comments().length + " comments");
+        for (String c: this.comments()) {
+            writer.write(c);
+        }
         this.save(this, writer);
         writer.close();
     }
@@ -400,21 +404,30 @@ public final class ConfigSpec extends ConfigGroup {
             return new CustomFieldBuilder<>(name, this.active, defaultValue, type, subType);
         }
 
-        public SpecBuilder comments(String... comment) {
-            this.active.comments.addAll(Arrays.asList(comment));
+        public SpecBuilder comments(String... comments) {
+            this.active.comments.addAll(Arrays.asList(comments));
+            return this;
+        }
+
+        public SpecBuilder comment(String comment) {
+            this.active.comments.add(comment);
             return this;
         }
 
         public SpecBuilder push(String name) {
-            for (String n : name.split("\\.")) {
+            for (String n: name.split("\\.")) {
                 this.active = new ConfigGroup(n, this.active);
             }
             return this;
         }
 
         public SpecBuilder pop() {
-            this.active.fields = Collections.unmodifiableSet(this.active.fields);
-            this.active.comments = Collections.unmodifiableSet(this.active.comments);
+            if (!this.active.fields.isEmpty()) {
+                this.active.fields = Collections.unmodifiableSet(this.active.fields);
+                this.active.comments = Collections.unmodifiableSet(this.active.comments);
+            } else {
+                this.active.group.dispose(this.active); // remove empty group
+            }
             this.active = this.active.group;
             return this;
         }

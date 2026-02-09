@@ -67,7 +67,6 @@ public class JSON5Format implements IFormatCodec {
             if (this.beginned) {
                 this.buffer.append(JSON_CONTINUE);
                 this.buffer.append("\n");
-                this.buffer.append("\n");
             } else {
                 this.beginned = true;
             }
@@ -155,10 +154,18 @@ public class JSON5Format implements IFormatCodec {
             if (this.beginned) {
                 this.buffer.append(JSON_CONTINUE);
                 this.buffer.append("\n");
-                this.buffer.append("\n");
             } else {
                 this.beginned = true;
             }
+            for (String comment: this.comments) {
+                this.buffer.append("\t".repeat(this.group.size() + 1));
+                this.buffer.append(JSON_COMMENT_LINE);
+                this.buffer.append(JSON_COMMENT_LINE);
+                this.buffer.append(" ");
+                this.buffer.append(comment);
+                this.buffer.append("\n");
+            }
+            this.comments.clear();
             this.buffer.append("\t".repeat(this.group.size() + 1));
             this.buffer.append(JSON_STRING_LINE);
             this.buffer.append(groupName);
