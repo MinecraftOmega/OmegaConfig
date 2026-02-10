@@ -53,8 +53,6 @@ public class JSON5Format implements IFormatCodec {
                 throw new IOException("Failed to create parent directories for " + path);
             }
             this.writer = new BufferedWriter(new FileWriter(path.toFile(), StandardCharsets.UTF_8));
-            this.buffer.append(JSON_OBJECT_START);
-            this.buffer.append("\n");
         }
 
         @Override
@@ -67,6 +65,9 @@ public class JSON5Format implements IFormatCodec {
             if (this.beginned) {
                 this.buffer.append(JSON_CONTINUE);
                 this.buffer.append("\n");
+                if (!this.comments.isEmpty()) {
+                    this.buffer.append("\n");
+                }
             } else {
                 this.beginned = true;
             }
@@ -75,7 +76,7 @@ public class JSON5Format implements IFormatCodec {
 
             // WRITE SPACES
             for (String comment: this.comments) {
-                this.buffer.append("\t".repeat(this.group.size() + 1));
+                this.buffer.append("\t".repeat(this.group.size()));
                 this.buffer.append(JSON_COMMENT_LINE);
                 this.buffer.append(JSON_COMMENT_LINE);
                 this.buffer.append(" ");
@@ -83,7 +84,7 @@ public class JSON5Format implements IFormatCodec {
                 this.buffer.append("\n");
             }
             this.comments.clear();
-            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append("\t".repeat(this.group.size()));
             this.buffer.append(JSON_STRING_LINE);
             this.buffer.append(fieldName);
             this.buffer.append(JSON_STRING_LINE);
@@ -104,7 +105,9 @@ public class JSON5Format implements IFormatCodec {
             if (this.beginned) {
                 this.buffer.append(JSON_CONTINUE);
                 this.buffer.append("\n");
-                this.buffer.append("\n");
+                if (!this.comments.isEmpty()) {
+                    this.buffer.append("\n");
+                }
             } else {
                 this.beginned = true;
             }
@@ -112,7 +115,7 @@ public class JSON5Format implements IFormatCodec {
             boolean isString = (!subType.isAssignableFrom(Number.class) || !subType.isAssignableFrom(Boolean.class));
 
             for (String comment: this.comments) {
-                this.buffer.append("\t".repeat(this.group.size() + 1));
+                this.buffer.append("\t".repeat(this.group.size()));
                 this.buffer.append(JSON_COMMENT_LINE);
                 this.buffer.append(JSON_COMMENT_LINE);
                 this.buffer.append(" ");
@@ -120,7 +123,7 @@ public class JSON5Format implements IFormatCodec {
                 this.buffer.append("\n");
             }
             this.comments.clear();
-            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append("\t".repeat(this.group.size()));
             this.buffer.append(JSON_STRING_LINE);
             this.buffer.append(fieldName);
             this.buffer.append(JSON_STRING_LINE);
@@ -132,7 +135,7 @@ public class JSON5Format implements IFormatCodec {
 
             while (it.hasNext()) {
                 String value = it.next();
-                this.buffer.append("\t".repeat(this.group.size() + 2));
+                this.buffer.append("\t".repeat(this.group.size() + 1));
                 if (isString) {
                     this.buffer.append(JSON_STRING_LINE);
                 }
@@ -145,20 +148,40 @@ public class JSON5Format implements IFormatCodec {
                 }
                 this.buffer.append("\n");
             }
-            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append("\t".repeat(this.group.size()));
             this.buffer.append(JSON_ARRAY_END);
         }
 
         @Override
         public void push(String groupName) {
+            if (this.group.isEmpty()) {
+                // Root push: write pending comments before opening brace
+                for (String comment: this.comments) {
+                    this.buffer.append(JSON_COMMENT_LINE);
+                    this.buffer.append(JSON_COMMENT_LINE);
+                    this.buffer.append(" ");
+                    this.buffer.append(comment);
+                    this.buffer.append("\n");
+                }
+                this.comments.clear();
+                this.buffer.append(JSON_OBJECT_START);
+                this.buffer.append("\n");
+                this.group.push(groupName);
+                this.beginned = false;
+                return;
+            }
+
             if (this.beginned) {
                 this.buffer.append(JSON_CONTINUE);
                 this.buffer.append("\n");
+                if (!this.comments.isEmpty()) {
+                    this.buffer.append("\n");
+                }
             } else {
                 this.beginned = true;
             }
             for (String comment: this.comments) {
-                this.buffer.append("\t".repeat(this.group.size() + 1));
+                this.buffer.append("\t".repeat(this.group.size()));
                 this.buffer.append(JSON_COMMENT_LINE);
                 this.buffer.append(JSON_COMMENT_LINE);
                 this.buffer.append(" ");
@@ -166,7 +189,7 @@ public class JSON5Format implements IFormatCodec {
                 this.buffer.append("\n");
             }
             this.comments.clear();
-            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append("\t".repeat(this.group.size()));
             this.buffer.append(JSON_STRING_LINE);
             this.buffer.append(groupName);
             this.buffer.append(JSON_STRING_LINE);
@@ -182,14 +205,13 @@ public class JSON5Format implements IFormatCodec {
         public void pop() {
             this.group.pop();
             this.buffer.append('\n');
-            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append("\t".repeat(this.group.size()));
             this.buffer.append(JSON_OBJECT_END);
-            this.buffer.append("\n");
         }
 
         @Override
         public void close() throws IOException {
-            this.buffer.append(JSON_OBJECT_END);
+            this.buffer.append("\n");
             this.writer.write(this.buffer.toString());
             this.writer.flush();
             this.writer.close();
@@ -389,7 +411,11 @@ public class JSON5Format implements IFormatCodec {
                         if (capturing == KEY || capturing == VALUE_STRING) {
                             break;
                         }
-                        this.popGroup(); // POP GROUP fixme move capturing to popGroup
+                        if (capturing == VALUE) {
+                            this.putEntry(false);
+                            capturing = NONE;
+                        }
+                        this.popGroup();
                         if (group.isEmpty()) {
                             capturing = NONE;
                             nexts = null;

@@ -155,6 +155,15 @@ public final class ConfigSpec extends ConfigGroup {
             } else {
                 String value = reader.read(field.name());
                 if (value != null) {
+                    if (field instanceof BaseNumberField<?> numberField && numberField.math()) {
+                        String evaluated = MathEvaluator.tryEvaluate(value, numberField.strictMath());
+                        if (evaluated != null) {
+                            value = evaluated;
+                        } else {
+                            field.reset();
+                            continue;
+                        }
+                    }
                     field.set0(OmegaConfig.tryParse(value, field.type(), field.subType()));
                 }
             }
@@ -165,11 +174,12 @@ public final class ConfigSpec extends ConfigGroup {
 
     void save() throws IOException {
         IFormatWriter writer = this.format.createWritter(this.filePath);
-        System.out.println(this.comments().length == 0 ? "Empty" : "Has " + this.comments().length + " comments");
         for (String c: this.comments()) {
             writer.write(c);
         }
+        writer.push(this.name());
         this.save(this, writer);
+        writer.pop();
         writer.close();
     }
 

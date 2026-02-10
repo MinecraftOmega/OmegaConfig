@@ -52,9 +52,6 @@ public class CFGFormat implements IFormatCodec {
                 throw new IOException("Failed to create parent directories for " + path);
             }
             this.writer = new BufferedWriter(new FileWriter(path.toFile(), StandardCharsets.UTF_8));
-            // CFG top-level is a mapping
-            this.buffer.append("{\n");
-            this.indentLevel = 1;
         }
 
         @Override
@@ -115,6 +112,16 @@ public class CFGFormat implements IFormatCodec {
 
         @Override
         public void push(String groupName) {
+            if (this.group.isEmpty()) {
+                // Root push: write pending comments before opening brace
+                writeComments();
+                this.buffer.append("{\n");
+                this.group.push(groupName);
+                this.indentLevel++;
+                this.firstInMapping = true;
+                return;
+            }
+
             // Add blank line before comments (if not first and has comments)
             if (!firstInMapping && !comments.isEmpty()) {
                 this.buffer.append("\n");
@@ -137,14 +144,13 @@ public class CFGFormat implements IFormatCodec {
                 this.indentLevel--;
                 this.buffer.append("\n");
                 indent();
-                this.buffer.append("}");
+                this.buffer.append("}\n");
                 this.firstInMapping = false;
             }
         }
 
         @Override
         public void close() throws IOException {
-            this.buffer.append("\n}\n");
             this.writer.write(this.buffer.toString());
             this.writer.flush();
             this.writer.close();
@@ -464,7 +470,7 @@ public class CFGFormat implements IFormatCodec {
             int i = start;
             StringBuilder value = new StringBuilder();
 
-            while (i < len && !Character.isWhitespace(data[i]) && data[i] != ',' && data[i] != '}' && data[i] != ']' && data[i] != '#') {
+            while (i < len && data[i] != '\n' && data[i] != '\r' && data[i] != ',' && data[i] != '}' && data[i] != ']' && data[i] != '#') {
                 value.append(data[i]);
                 i++;
             }

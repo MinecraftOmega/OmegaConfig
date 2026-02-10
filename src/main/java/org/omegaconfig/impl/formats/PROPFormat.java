@@ -78,7 +78,11 @@ public class PROPFormat implements IFormatCodec {
             String value = fields.get(group.append(fieldName).toString());
             if (value.charAt(0) == '[' && value.charAt(value.length() - 1) == ']') {
                 value = value.substring(1, value.length() - 1);
-                return value.trim().split(",");
+                String[] parts = value.trim().split(",");
+                for (int i = 0; i < parts.length; i++) {
+                    parts[i] = parts[i].trim();
+                }
+                return parts;
             }
 
             return null;
@@ -104,6 +108,7 @@ public class PROPFormat implements IFormatCodec {
         private final Stack<String> groups = new Stack<>();
         private final BufferedWriter out;
         private final StringBuilder data = new StringBuilder();
+        private boolean rootPushed = false;
 
         public FormatWriter(Path filePath) throws IOException {
             // TODO: safe maker
@@ -139,6 +144,10 @@ public class PROPFormat implements IFormatCodec {
         @Override
         // TODO: implement a check for re-pushing a wrote group
         public void push(String groupName) {
+            if (!rootPushed) {
+                rootPushed = true;
+                return; // Properties root has no group prefix
+            }
             this.groups.push(groupName);
             this.data.append(FORMAT_KEY_BREAKLINE);
             this.write("Begin of group " + Tools.concat("", "", FORMAT_KEY_GROUP_SPLIT, groups));
@@ -146,6 +155,7 @@ public class PROPFormat implements IFormatCodec {
 
         @Override
         public void pop() {
+            if (this.groups.isEmpty()) return; // root pop
             this.groups.pop();
             this.data.append(FORMAT_KEY_BREAKLINE.repeat(2));
         }

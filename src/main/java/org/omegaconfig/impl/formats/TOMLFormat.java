@@ -40,6 +40,7 @@ public class TOMLFormat implements IFormatCodec {
         private final List<String> comments = new ArrayList<>();
         private String currentTable = "";
         private boolean tableHeaderWritten = false;
+        private boolean firstInSection = true;
 
         public FormatWriter(Path path) throws IOException {
             if (!path.toFile().getParentFile().exists() && !path.toFile().getParentFile().mkdirs()) {
@@ -57,6 +58,11 @@ public class TOMLFormat implements IFormatCodec {
         public void write(String fieldName, String value, Class<?> type, Class<?> subType) {
             ensureTableHeader();
 
+            // Add blank line before comments for readability
+            if (!firstInSection && !this.comments.isEmpty()) {
+                this.buffer.append("\n");
+            }
+
             // Write comments
             for (String comment : this.comments) {
                 this.buffer.append("# ").append(comment).append("\n");
@@ -67,11 +73,17 @@ public class TOMLFormat implements IFormatCodec {
             this.buffer.append(escapeKey(fieldName)).append(" = ");
             this.buffer.append(formatValue(value, type));
             this.buffer.append("\n");
+            this.firstInSection = false;
         }
 
         @Override
         public void write(String fieldName, String[] values, Class<?> type, Class<?> subType) {
             ensureTableHeader();
+
+            // Add blank line before comments for readability
+            if (!firstInSection && !this.comments.isEmpty()) {
+                this.buffer.append("\n");
+            }
 
             // Write comments
             for (String comment: this.comments) {
@@ -104,10 +116,9 @@ public class TOMLFormat implements IFormatCodec {
 
         @Override
         public void pop() {
-            if (!this.group.isEmpty()) {
-                this.group.pop();
-                this.tableHeaderWritten = false;
-            }
+            if (this.group.isEmpty()) return;
+            this.group.pop();
+            this.tableHeaderWritten = false;
         }
 
         @Override
@@ -128,6 +139,7 @@ public class TOMLFormat implements IFormatCodec {
                 }
                 currentTable = tableName;
                 tableHeaderWritten = true;
+                firstInSection = true;
             }
         }
 
@@ -582,12 +594,12 @@ public class TOMLFormat implements IFormatCodec {
             int len = data.length;
             StringBuilder value = new StringBuilder();
 
-            while (i < len && !Character.isWhitespace(data[i]) && data[i] != '#' && data[i] != ',' && data[i] != ']' && data[i] != '}') {
+            while (i < len && data[i] != '\n' && data[i] != '\r' && data[i] != '#' && data[i] != ',' && data[i] != ']' && data[i] != '}') {
                 value.append(data[i]);
                 i++;
             }
 
-            String literal = value.toString();
+            String literal = value.toString().trim();
             values.put(key, literal);
             return skipToEndOfLine(data, i);
         }

@@ -47,8 +47,6 @@ public class JSONFormat implements IFormatCodec {
                 throw new IOException("Failed to create parent directories for " + path);
             }
             this.writer = new BufferedWriter(new FileWriter(path.toFile(), StandardCharsets.UTF_8));
-            this.buffer.append(JSON_OBJECT_START);
-            this.buffer.append("\n");
         }
 
         @Override
@@ -69,7 +67,7 @@ public class JSONFormat implements IFormatCodec {
             boolean isString = !(Number.class.isAssignableFrom(type)) || Boolean.class.isAssignableFrom(type);
 
             // WRITE SPACES
-            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append("\t".repeat(this.group.size()));
             this.buffer.append(JSON_STRING_LINE);
             this.buffer.append(fieldName);
             this.buffer.append(JSON_STRING_LINE);
@@ -96,7 +94,7 @@ public class JSONFormat implements IFormatCodec {
 
             boolean isString = (!subType.isAssignableFrom(Number.class) || !subType.isAssignableFrom(Boolean.class));
 
-            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append("\t".repeat(this.group.size()));
             this.buffer.append(JSON_STRING_LINE);
             this.buffer.append(fieldName);
             this.buffer.append(JSON_STRING_LINE);
@@ -108,7 +106,7 @@ public class JSONFormat implements IFormatCodec {
 
             while (it.hasNext()) {
                 String value = it.next();
-                this.buffer.append("\t".repeat(this.group.size() + 2));
+                this.buffer.append("\t".repeat(this.group.size() + 1));
                 if (isString) {
                     this.buffer.append(JSON_STRING_LINE);
                 }
@@ -121,19 +119,28 @@ public class JSONFormat implements IFormatCodec {
                 }
                 this.buffer.append("\n");
             }
-            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append("\t".repeat(this.group.size()));
             this.buffer.append(JSON_ARRAY_END);
         }
 
         @Override
         public void push(String groupName) {
+            if (this.group.isEmpty()) {
+                // Root push: open root object
+                this.buffer.append(JSON_OBJECT_START);
+                this.buffer.append("\n");
+                this.group.push(groupName);
+                this.beginned = false;
+                return;
+            }
+
             if (this.beginned) {
                 this.buffer.append(JSON_CONTINUE);
                 this.buffer.append("\n");
             } else {
                 this.beginned = true;
             }
-            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append("\t".repeat(this.group.size()));
             this.buffer.append(JSON_STRING_LINE);
             this.buffer.append(groupName);
             this.buffer.append(JSON_STRING_LINE);
@@ -149,14 +156,13 @@ public class JSONFormat implements IFormatCodec {
         public void pop() {
             this.group.pop();
             this.buffer.append('\n');
-            this.buffer.append("\t".repeat(this.group.size() + 1));
+            this.buffer.append("\t".repeat(this.group.size()));
             this.buffer.append(JSON_OBJECT_END);
-            this.buffer.append("\n");
         }
 
         @Override
         public void close() throws IOException {
-            this.buffer.append(JSON_OBJECT_END);
+            this.buffer.append("\n");
             this.writer.write(this.buffer.toString());
             this.writer.flush();
             this.writer.close();
@@ -316,23 +322,28 @@ public class JSONFormat implements IFormatCodec {
                     }
 
                     case JSON_OBJECT_END -> {
-                        this.popGroup(); // POP GROUP fixme move capturing to popGroup
+                        if (capturing == VALUE) {
+                            this.putEntry(false);
+                            capturing = NONE;
+                        }
+                        this.popGroup();
                         if (group.isEmpty()) {
                             capturing = NONE;
                             nexts = null;
                             continue;
                         }
-                        group.pop();
                         nexts = CONTINUE_OR_END;
                         continue;
                     }
 
                     case JSON_ARRAY_END -> {
                         if (capturing == ARRAY || capturing == ARRAY_STRING) {
+                            if (capturing == ARRAY) {
+                                this.putArrayValue();
+                            }
+                            this.putEntry(true);
                             capturing = NONE;
                             nexts = CONTINUE_OR_END;
-                            this.putArrayValue();
-                            this.putEntry(true);
                             continue;
                         }
                         throw new IllegalStateException("JSON array end detected but not capturing an array");
@@ -401,7 +412,7 @@ public class JSONFormat implements IFormatCodec {
         }
 
         private void putEntry(boolean array) {
-            values.put(Tools.concat("", (!group.isEmpty() ? "." : "") + key, '.', group), array ? Arrays.toString(arrayValues.toArray()) :value.toString());
+            values.put(Tools.concat("", (!group.isEmpty() ? "." : "") + key, '.', group), array ? arrayValues.toArray(new String[0]) : value.toString());
             this.clear();
             this.escaped = false;
         }
