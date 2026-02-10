@@ -39,7 +39,7 @@ dependencies {
 // Process target resources with mod info
 processResources {
     outputs.upToDateWhen { false }
-    filesMatching(['META-INF/mods.toml', 'META-INF/neoforge.mods.toml', 'pack.mcmeta', 'fabric.mod.json', "watermedia/version.cfg"]) {
+    filesMatching(['META-INF/mods.toml', 'META-INF/neoforge.mods.toml', 'pack.mcmeta', 'fabric.mod.json']) {
         expand(project.properties)
     }
 }

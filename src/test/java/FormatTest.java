@@ -1,8 +1,8 @@
+import me.srrapero720.waterconfig.impl.formats.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
-import org.omegaconfig.api.formats.IFormatReader;
-import org.omegaconfig.api.formats.IFormatWriter;
-import org.omegaconfig.impl.formats.*;
+import me.srrapero720.waterconfig.api.formats.IFormatReader;
+import me.srrapero720.waterconfig.api.formats.IFormatWriter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

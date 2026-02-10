@@ -1,5 +1,5 @@
 import org.junit.jupiter.api.Test;
-import org.omegaconfig.MathEvaluator;
+import me.srrapero720.waterconfig.impl.formats.special.MathEvaluator;
 
 import static org.junit.jupiter.api.Assertions.*;
 

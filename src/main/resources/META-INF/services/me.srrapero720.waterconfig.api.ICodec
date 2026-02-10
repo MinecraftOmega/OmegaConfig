@@ -1,0 +1,13 @@
+me.srrapero720.waterconfig.impl.codecs.BooleanCodec
+me.srrapero720.waterconfig.impl.codecs.ByteCodec
+me.srrapero720.waterconfig.impl.codecs.CharCodec
+me.srrapero720.waterconfig.impl.codecs.DoubleCodec
+me.srrapero720.waterconfig.impl.codecs.EnumCodec
+me.srrapero720.waterconfig.impl.codecs.FileCodec
+me.srrapero720.waterconfig.impl.codecs.FloatCodec
+me.srrapero720.waterconfig.impl.codecs.IntCodec
+me.srrapero720.waterconfig.impl.codecs.LongCodec
+me.srrapero720.waterconfig.impl.codecs.PathCodec
+me.srrapero720.waterconfig.impl.codecs.UUIDCodec
+me.srrapero720.waterconfig.impl.codecs.ShortCodec
+me.srrapero720.waterconfig.impl.codecs.URICodec

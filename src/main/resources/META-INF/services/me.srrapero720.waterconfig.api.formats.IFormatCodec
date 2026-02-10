@@ -1,0 +1,5 @@
+me.srrapero720.waterconfig.impl.formats.TOMLFormat
+me.srrapero720.waterconfig.impl.formats.CFGFormat
+me.srrapero720.waterconfig.impl.formats.JSONFormat
+me.srrapero720.waterconfig.impl.formats.JSON5Format
+me.srrapero720.waterconfig.impl.formats.PROPFormat

@@ -1,4 +1,4 @@
-# OmegaConfig
+# WaterConfig
 Greddy implementation of a Config based on annotation types and field types.
 Works with TOML, JSON5 and CFG
 
