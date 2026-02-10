@@ -12,10 +12,12 @@ public final class BooleanField extends BaseConfigField<Boolean, Void> implement
 
     public BooleanField(String name, ConfigGroup group, Set<String> comments, Field field, Object context) {
         super(name, group, comments, field, context);
+        this.primitive = this.defaultValue;
     }
 
     public BooleanField(String name, ConfigGroup group, Set<String> comments, Boolean defaultValue) {
         super(name, group, comments, defaultValue);
+        this.primitive = this.defaultValue;
     }
 
     @Override
