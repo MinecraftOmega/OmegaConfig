@@ -24,7 +24,7 @@ public class TOMLFormat implements IFormatCodec {
     }
 
     @Override
-    public IFormatWriter createWritter(Path filePath) throws IOException {
+    public IFormatWriter createWriter(Path filePath) throws IOException {
         return new FormatWriter(filePath);
     }
 

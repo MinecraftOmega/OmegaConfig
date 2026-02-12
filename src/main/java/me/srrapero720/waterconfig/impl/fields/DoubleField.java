@@ -49,7 +49,7 @@ public final class DoubleField extends BaseNumberField<Double> implements Double
 
     @Override
     public String minValueString() {
-        return this.min == Double.MIN_VALUE ? null : String.valueOf(min);
+        return this.min == -Double.MAX_VALUE ? null : String.valueOf(min);
     }
 
     @Override

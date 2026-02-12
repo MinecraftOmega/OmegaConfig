@@ -47,13 +47,13 @@ public final class FloatField extends BaseNumberField<Float> implements DoubleSu
         return primitive;
     }
 
-    public double getAsFloat() {
+    public float getAsFloat() {
         return primitive;
     }
 
     @Override
     public String minValueString() {
-        return this.min == Float.MIN_VALUE ? null : String.valueOf(min);
+        return this.min == -Float.MAX_VALUE ? null : String.valueOf(min);
     }
 
     @Override

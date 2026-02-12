@@ -31,7 +31,7 @@ public class JSONFormat implements IFormatCodec {
     }
 
     @Override
-    public IFormatWriter createWritter(Path filePath) throws IOException {
+    public IFormatWriter createWriter(Path filePath) throws IOException {
         return new FormatWriter(filePath);
     }
 
@@ -63,8 +63,7 @@ public class JSONFormat implements IFormatCodec {
                 this.beginned = true;
             }
 
-            System.out.println("Writing field: " + fieldName + " with value: " + value + " of type: " + type.getName() + " and subtype: " + (subType != null ? subType.getName() : "null"));
-            boolean isString = !(Number.class.isAssignableFrom(type)) || Boolean.class.isAssignableFrom(type);
+            boolean isString = !Number.class.isAssignableFrom(type) && !Boolean.class.isAssignableFrom(type);
 
             // WRITE SPACES
             this.buffer.append("\t".repeat(this.group.size()));
@@ -92,7 +91,7 @@ public class JSONFormat implements IFormatCodec {
                 this.beginned = true;
             }
 
-            boolean isString = (!subType.isAssignableFrom(Number.class) || !subType.isAssignableFrom(Boolean.class));
+            boolean isString = !Number.class.isAssignableFrom(subType) && !Boolean.class.isAssignableFrom(subType);
 
             this.buffer.append("\t".repeat(this.group.size()));
             this.buffer.append(JSON_STRING_LINE);
@@ -419,12 +418,6 @@ public class JSONFormat implements IFormatCodec {
 
         private void putArrayValue() {
             arrayValues.add(value.toString());
-            value.setLength(0);
-            escaped = false;
-        }
-
-        private void putValue() {
-            value.append(value.toString());
             value.setLength(0);
             escaped = false;
         }

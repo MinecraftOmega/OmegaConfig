@@ -170,9 +170,8 @@ public class SpecTest {
                     }
                     """, StandardCharsets.UTF_8);
 
-            // strict math throws → load() catches exception → returns false
-            boolean loaded = spec.load();
-            assertFalse(loaded, "Load should fail on strict math invalid expression");
+            // strict math throws since load() no longer catches exceptions
+            assertThrows(IllegalArgumentException.class, spec::load, "Load should throw on strict math invalid expression");
         }
 
         @Test
@@ -442,8 +441,8 @@ public class SpecTest {
                     }
                     """, StandardCharsets.UTF_8);
 
-            boolean loaded = spec.load();
-            assertFalse(loaded, "Strict math invalid expression should cause load to fail");
+            // strict math throws since load() no longer catches exceptions
+            assertThrows(IllegalArgumentException.class, spec::load, "Strict math invalid expression should throw");
         }
 
         @Test

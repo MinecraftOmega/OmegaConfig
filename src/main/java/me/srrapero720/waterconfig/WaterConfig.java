@@ -12,13 +12,47 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static me.srrapero720.waterconfig.WaterConfigRegistry.*;
 import static me.srrapero720.waterconfig.Tools.toBoxed;
 
 public class WaterConfig {
-    private static final Thread RT_WORKER = new Thread(WaterConfig::run);
     public static final String ID = "waterconfig";
+
+    // ══════════════════════════════════════════════════════════
+    //  THREADING
+    // ══════════════════════════════════════════════════════════
+    private static final ExecutorService IO_POOL = Executors.newSingleThreadExecutor(r -> {
+        var t = new Thread(r, "WaterConfig-IO");
+        t.setDaemon(true);
+        return t;
+    });
+    private static Thread RT_WORKER;
+
+    // ══════════════════════════════════════════════════════════
+    //  LOOP SPECS — exclusive to the worker
+    // ══════════════════════════════════════════════════════════
+    private static final Map<String, ConfigSpec> LOOP_SPECS = new ConcurrentHashMap<>();
+
+    // ══════════════════════════════════════════════════════════
+    //  OVERFLOW
+    // ══════════════════════════════════════════════════════════
+    private static final long SLOW_THRESHOLD_NS  = TimeUnit.SECONDS.toNanos(5);
+    private static final long PANIC_THRESHOLD_NS = TimeUnit.SECONDS.toNanos(10);
+    private static final int  OVERFLOW_LIMIT     = 3;
+
+    private static final ExecutorService OVERFLOW_POOL = Executors.newFixedThreadPool(OVERFLOW_LIMIT, r -> {
+        var t = new Thread(r, "WaterConfig-Overflow");
+        t.setDaemon(true);
+        return t;
+    });
+    private static final Set<String> OVERFLOW_ACTIVE = ConcurrentHashMap.newKeySet();
+    private static volatile boolean PANIC = false;
+    private static volatile long overflowFullSince = 0;
 
     // FORMATS
     public static final String FORMAT_PROPERTIES = "properties";
@@ -40,6 +74,17 @@ public class WaterConfig {
         synchronized (SPECS) {
             SPECS.put(spec.name(), spec);
         }
+
+        IO_POOL.submit(() -> {
+            try {
+                if (!spec.load()) spec.save();
+                spec.loaded = true;
+                spec.dirty = false;
+                LOOP_SPECS.put(spec.name(), spec);
+            } catch (Exception e) {
+                System.err.println("[WaterConfig] Failed to load spec '" + spec.name() + "': " + e.getMessage());
+            }
+        });
 
         return spec;
     }
@@ -216,7 +261,7 @@ public class WaterConfig {
                 ctor.setAccessible(true);
                 childInstance = ctor.newInstance();
                 childStatic = false;
-            } catch (ReflectiveOperationException ignored) {}
+            } catch (Exception ignored) {}
 
             builder.push(spec.value());
             register$iterateClass(childInstance, clazz, builder, childStatic);
@@ -371,44 +416,163 @@ public class WaterConfig {
 
     static void run() {
         while (!Thread.interrupted()) {
-            synchronized (SPECS) {
-                for (ConfigSpec spec: SPECS.values()) {
-                    try {
-                        if (!spec.isLoaded() && !spec.load()) spec.save();
-                        if (spec.isDirty()) spec.save();
-                        if (spec.isReload()) spec.load();
-                    } catch (Exception e) {
-                        throw new IllegalStateException("Failed to process spec '" + spec.name() + "', spec flags=[loaded=" + spec.isLoaded() + ", dirty=" + spec.isDirty() + ", reload=" + spec.isReload() + "]", e);
+            try {
+                if (PANIC) break;
+
+                for (ConfigSpec spec : LOOP_SPECS.values()) {
+                    if (PANIC) break;
+                    if (OVERFLOW_ACTIVE.contains(spec.name())) continue;
+
+                    boolean needsSave = spec.isDirty();
+                    boolean needsReload = spec.isReload();
+                    if (!needsSave && !needsReload) continue;
+
+                    if (spec.isSlow()) {
+                        overflowProcess(spec);
+                        continue;
+                    }
+
+                    long start = System.nanoTime();
+                    doProcess(spec);
+                    long elapsed = System.nanoTime() - start;
+
+                    if (elapsed >= SLOW_THRESHOLD_NS) {
+                        spec.setSlow(true);
                     }
                 }
-            }
-            try {
-                Thread.sleep(5000);
+
+                if (!PANIC) Thread.sleep(5000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         }
-        Thread.currentThread().interrupt();
     }
 
-    public static void init() {
+    private static void doProcess(ConfigSpec spec) {
+        try {
+            if (spec.isDirty()) {
+                spec.dirty = false;
+                spec.dirtyFields().clear();
+                spec.save();
+            }
+            if (spec.isReload()) {
+                spec.reload = false;
+                spec.load();
+            }
+        } catch (Exception e) {
+            spec.dirty = true; // retry on next tick
+            System.err.println("[WaterConfig] Error processing spec '" + spec.name() + "': " + e.getMessage());
+        }
+    }
+
+    private static void overflowProcess(ConfigSpec spec) {
+        if (OVERFLOW_ACTIVE.size() >= OVERFLOW_LIMIT) {
+            checkPanic();
+            return;
+        }
+
+        OVERFLOW_ACTIVE.add(spec.name());
+        OVERFLOW_POOL.submit(() -> {
+            long start = System.nanoTime();
+            try {
+                doProcess(spec);
+
+                long elapsed = System.nanoTime() - start;
+                if (elapsed < SLOW_THRESHOLD_NS) {
+                    spec.setSlow(false);
+                }
+            } finally {
+                OVERFLOW_ACTIVE.remove(spec.name());
+            }
+        });
+    }
+
+    private static void checkPanic() {
+        if (OVERFLOW_ACTIVE.size() >= OVERFLOW_LIMIT) {
+            long now = System.nanoTime();
+            if (overflowFullSince == 0) {
+                overflowFullSince = now;
+            } else if (now - overflowFullSince >= PANIC_THRESHOLD_NS) {
+                PANIC = true;
+                triggerPanic();
+            }
+        } else {
+            overflowFullSince = 0;
+        }
+    }
+
+    private static void triggerPanic() {
+        System.err.println("[WaterConfig] PANIC: I/O overflow saturated for 10s — emergency shutdown");
+
+        for (ConfigSpec spec: LOOP_SPECS.values()) {
+            if (spec.isDirty()) {
+                try {
+                    spec.save();
+                } catch (Exception e) {
+                    System.err.println("[WaterConfig] Emergency save failed for '" + spec.name() + "': " + e.getMessage());
+                }
+            }
+        }
+
+        OVERFLOW_POOL.shutdownNow();
+        LOOP_SPECS.clear();
+    }
+
+    public static void unload(String name) {
+        ConfigSpec spec;
+        synchronized (SPECS) {
+            spec = SPECS.remove(name);
+        }
+        if (spec == null) return;
+
+        LOOP_SPECS.remove(name);
+
+        IO_POOL.submit(() -> {
+            try {
+                if (spec.isDirty()) spec.save();
+            } catch (Exception e) {
+                System.err.println("[WaterConfig] Final save failed for '" + spec.name() + "': " + e.getMessage());
+            }
+        });
+    }
+
+    private static void init() {
         WaterConfigRegistry.init();
-        // This method is intentionally left empty.
-        // It can be used for any initialization logic if needed in the future.
+
+        RT_WORKER = new Thread(WaterConfig::run, "WaterConfig-Worker");
+        RT_WORKER.setDaemon(true);
+        RT_WORKER.start();
+
+        Runtime.getRuntime().addShutdownHook(new Thread(WaterConfig::shutdown, "WaterConfig-Shutdown"));
+    }
+
+    static void shutdown() {
+        RT_WORKER.interrupt();
+        try {
+            RT_WORKER.join(3000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        for (ConfigSpec spec : LOOP_SPECS.values()) {
+            if (spec.isDirty()) {
+                try {
+                    spec.save();
+                } catch (Exception e) {
+                    System.err.println("[WaterConfig] Shutdown save failed for '" + spec.name() + "': " + e.getMessage());
+                }
+            }
+        }
+
+        IO_POOL.shutdown();
+        OVERFLOW_POOL.shutdown();
+        LOOP_SPECS.clear();
+        synchronized (SPECS) {
+            SPECS.clear();
+        }
     }
 
     static {
         init();
-        RT_WORKER.setDaemon(true);
-        RT_WORKER.setName("OmegaConfig-Worker");
-        RT_WORKER.start();
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try {
-                RT_WORKER.interrupt();
-                RT_WORKER.join();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }));
     }
 }

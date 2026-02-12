@@ -53,7 +53,7 @@ public class FormatTest {
         @Test
         void testWriterOutput() throws IOException {
             Path file = tempDir.resolve("test.cfg");
-            IFormatWriter writer = new CFGFormat().createWritter(file);
+            IFormatWriter writer = new CFGFormat().createWriter(file);
             writeTestSpec(writer);
 
             String output = Files.readString(file, StandardCharsets.UTF_8);
@@ -85,7 +85,7 @@ public class FormatTest {
         @Test
         void testReaderScalarValues() throws IOException {
             Path file = tempDir.resolve("test.cfg");
-            IFormatWriter writer = new CFGFormat().createWritter(file);
+            IFormatWriter writer = new CFGFormat().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new CFGFormat().createReader(file);
@@ -99,7 +99,7 @@ public class FormatTest {
         @Test
         void testReaderNestedGroups() throws IOException {
             Path file = tempDir.resolve("test.cfg");
-            IFormatWriter writer = new CFGFormat().createWritter(file);
+            IFormatWriter writer = new CFGFormat().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new CFGFormat().createReader(file);
@@ -113,7 +113,7 @@ public class FormatTest {
         @Test
         void testReaderArrayValues() throws IOException {
             Path file = tempDir.resolve("test.cfg");
-            IFormatWriter writer = new CFGFormat().createWritter(file);
+            IFormatWriter writer = new CFGFormat().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new CFGFormat().createReader(file);
@@ -126,7 +126,7 @@ public class FormatTest {
         @Test
         void testRoundTrip() throws IOException {
             Path file = tempDir.resolve("test.cfg");
-            IFormatWriter writer = new CFGFormat().createWritter(file);
+            IFormatWriter writer = new CFGFormat().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new CFGFormat().createReader(file);
@@ -143,6 +143,34 @@ public class FormatTest {
             String[] tags = reader.readArray("tags");
             assertNotNull(tags);
             assertArrayEquals(new String[]{"alpha", "beta"}, tags);
+            reader.close();
+        }
+
+        @Test
+        void testHashComments() throws IOException {
+            Path file = tempDir.resolve("comments.cfg");
+            Files.writeString(file, """
+                    # Root comment
+                    {
+                      # Comment before value
+                      count: 42
+                      label: "hello world"
+                      # Comment between values
+                      enabled: true
+                      # Comment before group
+                      nested: {
+                        # Nested comment
+                        description: "inner"
+                      }
+                    }
+                    """);
+            IFormatReader reader = new CFGFormat().createReader(file);
+            assertEquals("42", reader.read("count"));
+            assertEquals("hello world", reader.read("label"));
+            assertEquals("true", reader.read("enabled"));
+            reader.push("nested");
+            assertEquals("inner", reader.read("description"));
+            reader.pop();
             reader.close();
         }
 
@@ -175,7 +203,7 @@ public class FormatTest {
         @Test
         void testWriterOutput() throws IOException {
             Path file = tempDir.resolve("test.json5");
-            IFormatWriter writer = new JSON5Format().createWritter(file);
+            IFormatWriter writer = new JSON5Format().createWriter(file);
             writeTestSpec(writer);
 
             String output = Files.readString(file, StandardCharsets.UTF_8);
@@ -206,7 +234,7 @@ public class FormatTest {
         @Test
         void testReaderScalarValues() throws IOException {
             Path file = tempDir.resolve("test.json5");
-            IFormatWriter writer = new JSON5Format().createWritter(file);
+            IFormatWriter writer = new JSON5Format().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new JSON5Format().createReader(file);
@@ -220,7 +248,7 @@ public class FormatTest {
         @Test
         void testReaderNestedGroups() throws IOException {
             Path file = tempDir.resolve("test.json5");
-            IFormatWriter writer = new JSON5Format().createWritter(file);
+            IFormatWriter writer = new JSON5Format().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new JSON5Format().createReader(file);
@@ -234,7 +262,7 @@ public class FormatTest {
         @Test
         void testRoundTrip() throws IOException {
             Path file = tempDir.resolve("test.json5");
-            IFormatWriter writer = new JSON5Format().createWritter(file);
+            IFormatWriter writer = new JSON5Format().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new JSON5Format().createReader(file);
@@ -253,6 +281,92 @@ public class FormatTest {
             assertArrayEquals(new String[]{"alpha", "beta"}, tags);
             reader.close();
         }
+
+        @Test
+        void testLineComments() throws IOException {
+            Path file = tempDir.resolve("line_comments.json5");
+            Files.writeString(file, """
+                    // Root line comment
+                    {
+                        // Comment before value
+                        "count": 42,
+                        "label": "hello world",
+                        // Comment between values
+                        "enabled": "true",
+                        // Comment before nested group
+                        "nested": {
+                            // Nested line comment
+                            "description": "inner"
+                        }
+                    }
+                    // Trailing comment after root
+                    """);
+            IFormatReader reader = new JSON5Format().createReader(file);
+            assertEquals("42", reader.read("count"));
+            assertEquals("hello world", reader.read("label"));
+            assertEquals("true", reader.read("enabled"));
+            reader.push("nested");
+            assertEquals("inner", reader.read("description"));
+            reader.pop();
+            reader.close();
+        }
+
+        @Test
+        void testBlockComments() throws IOException {
+            Path file = tempDir.resolve("block_comments.json5");
+            Files.writeString(file, """
+                    /* Root block comment */
+                    {
+                        /* Single-line block comment */
+                        "count": 42,
+                        /*
+                         * Multi-line
+                         * block comment
+                         */
+                        "label": "hello world",
+                        "enabled": "true"
+                    }
+                    """);
+            IFormatReader reader = new JSON5Format().createReader(file);
+            assertEquals("42", reader.read("count"));
+            assertEquals("hello world", reader.read("label"));
+            assertEquals("true", reader.read("enabled"));
+            reader.close();
+        }
+
+        @Test
+        void testMixedComments() throws IOException {
+            Path file = tempDir.resolve("mixed_comments.json5");
+            Files.writeString(file, """
+                    // Line comment before root
+                    /* Block comment before root */
+                    {
+                        // Line comment
+                        "count": 42,
+                        /* Block comment */
+                        "label": "hello world"
+                    }
+                    """);
+            IFormatReader reader = new JSON5Format().createReader(file);
+            assertEquals("42", reader.read("count"));
+            assertEquals("hello world", reader.read("label"));
+            reader.close();
+        }
+
+        @Test
+        void testSlashInStringValues() throws IOException {
+            Path file = tempDir.resolve("slash_strings.json5");
+            Files.writeString(file, """
+                    {
+                        "url": "https://example.com",
+                        "path": "a/b/c"
+                    }
+                    """);
+            IFormatReader reader = new JSON5Format().createReader(file);
+            assertEquals("https://example.com", reader.read("url"));
+            assertEquals("a/b/c", reader.read("path"));
+            reader.close();
+        }
     }
 
     // ========================================================================
@@ -264,16 +378,16 @@ public class FormatTest {
         @Test
         void testWriterOutput() throws IOException {
             Path file = tempDir.resolve("test.json");
-            IFormatWriter writer = new JSONFormat().createWritter(file);
+            IFormatWriter writer = new JSONFormat().createWriter(file);
             writeTestSpec(writer);
 
             String output = Files.readString(file, StandardCharsets.UTF_8);
-            // JSON: no comments, booleans quoted, root pop adds }\n, close adds \n
+            // JSON: no comments, booleans unquoted, root pop adds }\n, close adds \n
             String expected = """
                     {
                     \t"count": 42,
                     \t"label": "hello world",
-                    \t"enabled": "true",
+                    \t"enabled": true,
                     \t"ratio": 3.14,
                     \t"nested": {
                     \t\t"description": "inner",
@@ -291,7 +405,7 @@ public class FormatTest {
         @Test
         void testReaderScalarValues() throws IOException {
             Path file = tempDir.resolve("test.json");
-            IFormatWriter writer = new JSONFormat().createWritter(file);
+            IFormatWriter writer = new JSONFormat().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new JSONFormat().createReader(file);
@@ -305,7 +419,7 @@ public class FormatTest {
         @Test
         void testReaderNestedGroups() throws IOException {
             Path file = tempDir.resolve("test.json");
-            IFormatWriter writer = new JSONFormat().createWritter(file);
+            IFormatWriter writer = new JSONFormat().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new JSONFormat().createReader(file);
@@ -319,7 +433,7 @@ public class FormatTest {
         @Test
         void testRoundTrip() throws IOException {
             Path file = tempDir.resolve("test.json");
-            IFormatWriter writer = new JSONFormat().createWritter(file);
+            IFormatWriter writer = new JSONFormat().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new JSONFormat().createReader(file);
@@ -369,7 +483,7 @@ public class FormatTest {
         @Test
         void testWriterOutput() throws IOException {
             Path file = tempDir.resolve("test.toml");
-            IFormatWriter writer = new TOMLFormat().createWritter(file);
+            IFormatWriter writer = new TOMLFormat().createWriter(file);
             writeTestSpec(writer);
 
             String output = Files.readString(file, StandardCharsets.UTF_8);
@@ -401,7 +515,7 @@ public class FormatTest {
         @Test
         void testReaderScalarValues() throws IOException {
             Path file = tempDir.resolve("test.toml");
-            IFormatWriter writer = new TOMLFormat().createWritter(file);
+            IFormatWriter writer = new TOMLFormat().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new TOMLFormat().createReader(file);
@@ -417,7 +531,7 @@ public class FormatTest {
         @Test
         void testReaderNestedGroups() throws IOException {
             Path file = tempDir.resolve("test.toml");
-            IFormatWriter writer = new TOMLFormat().createWritter(file);
+            IFormatWriter writer = new TOMLFormat().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new TOMLFormat().createReader(file);
@@ -433,7 +547,7 @@ public class FormatTest {
         @Test
         void testRoundTrip() throws IOException {
             Path file = tempDir.resolve("test.toml");
-            IFormatWriter writer = new TOMLFormat().createWritter(file);
+            IFormatWriter writer = new TOMLFormat().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new TOMLFormat().createReader(file);
@@ -451,6 +565,27 @@ public class FormatTest {
             String[] tags = reader.readArray("tags");
             assertNotNull(tags);
             assertArrayEquals(new String[]{"alpha", "beta"}, tags);
+            reader.pop();
+            reader.close();
+        }
+
+        @Test
+        void testHashComments() throws IOException {
+            Path file = tempDir.resolve("comments.toml");
+            Files.writeString(file, """
+                    # Root comment
+                    [test_spec]
+                    # Comment before value
+                    count = 42
+                    label = "hello world"
+                    # Comment between values
+                    enabled = true
+                    """);
+            IFormatReader reader = new TOMLFormat().createReader(file);
+            reader.push("test_spec");
+            assertEquals("42", reader.read("count"));
+            assertEquals("hello world", reader.read("label"));
+            assertEquals("true", reader.read("enabled"));
             reader.pop();
             reader.close();
         }
@@ -485,7 +620,7 @@ public class FormatTest {
         @Test
         void testWriterOutput() throws IOException {
             Path file = tempDir.resolve("test.properties");
-            IFormatWriter writer = new PROPFormat().createWritter(file);
+            IFormatWriter writer = new PROPFormat().createWriter(file);
             writeTestSpec(writer);
 
             String output = Files.readString(file, StandardCharsets.UTF_8);
@@ -514,7 +649,7 @@ public class FormatTest {
         @Test
         void testReaderScalarValues() throws IOException {
             Path file = tempDir.resolve("test.properties");
-            IFormatWriter writer = new PROPFormat().createWritter(file);
+            IFormatWriter writer = new PROPFormat().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new PROPFormat().createReader(file);
@@ -528,7 +663,7 @@ public class FormatTest {
         @Test
         void testReaderNestedGroups() throws IOException {
             Path file = tempDir.resolve("test.properties");
-            IFormatWriter writer = new PROPFormat().createWritter(file);
+            IFormatWriter writer = new PROPFormat().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new PROPFormat().createReader(file);
@@ -542,13 +677,31 @@ public class FormatTest {
         @Test
         void testReaderArrayValues() throws IOException {
             Path file = tempDir.resolve("test.properties");
-            IFormatWriter writer = new PROPFormat().createWritter(file);
+            IFormatWriter writer = new PROPFormat().createWriter(file);
             writeTestSpec(writer);
 
             IFormatReader reader = new PROPFormat().createReader(file);
             String[] tags = reader.readArray("tags");
             assertNotNull(tags);
             assertArrayEquals(new String[]{"alpha", "beta"}, tags);
+            reader.close();
+        }
+
+        @Test
+        void testHashComments() throws IOException {
+            Path file = tempDir.resolve("comments.properties");
+            Files.writeString(file, """
+                    # Root comment
+                    # Comment before value
+                    count=42
+                    label=hello world
+                    # Comment between values
+                    enabled=true
+                    """);
+            IFormatReader reader = new PROPFormat().createReader(file);
+            assertEquals("42", reader.read("count"));
+            assertEquals("hello world", reader.read("label"));
+            assertEquals("true", reader.read("enabled"));
             reader.close();
         }
 

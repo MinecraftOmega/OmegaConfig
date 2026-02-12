@@ -92,13 +92,6 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
         this.group.markDirty(this);
     }
 
-    @Override
-    public boolean reflected() {
-        if (this.mode != Mode.REFLECT) return true;
-        T o = Tools.valueFrom(field, context);
-        return value.equals(o);
-    }
-
     private enum Mode {
         /**
          * Uses Java reflection to set values

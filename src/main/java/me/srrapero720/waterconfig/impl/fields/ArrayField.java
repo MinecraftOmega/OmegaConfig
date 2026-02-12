@@ -127,8 +127,7 @@ public class ArrayField<T> extends CollectionField<T[], T> {
         }
         // TRUNCATE VALUES
         if (this.limit > 0 && this.get().length > this.limit) {
-            T[] truncatedArray = Arrays.stream(this.get()).distinct().limit(this.limit).toArray(size -> (T[]) Array.newInstance(this.subType, size));
-            this.set(truncatedArray);
+            this.set(Arrays.copyOf(this.get(), this.limit));
         }
     }
 }

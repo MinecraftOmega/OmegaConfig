@@ -25,19 +25,6 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
         return Collections.unmodifiableSet(fields);
     }
 
-    // TODO: this is not EFFICIENT, but ok for now
-    public IConfigField<?, ?> getField(String id) {
-        for (IConfigField<?,?> field: this.fields) {
-            if (field instanceof ConfigGroup group) {
-                return group.getField(id);
-            }
-            if (field.id().equals(id)) {
-                return field;
-            }
-        }
-        return null;
-    }
-
     public IConfigField<?, ?> findField(String id) {
         if (id == null || id.isEmpty()) {
             return null;
@@ -125,6 +112,7 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
 
     @Override
     public String[] comments() {
+        // TODO: new array or the full collection
         return comments.toArray(new String[0]);
     }
 
@@ -138,11 +126,6 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
 
     @Override
     public void reset() {
-        throw new UnsupportedOperationException("Groups cannot handle values");
-    }
-
-    @Override
-    public boolean reflected() {
         throw new UnsupportedOperationException("Groups cannot handle values");
     }
 

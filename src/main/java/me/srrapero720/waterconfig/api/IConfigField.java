@@ -73,12 +73,6 @@ public interface IConfigField<T, S> extends Consumer<T>, Supplier<T> {
     void reset();
 
     /**
-     * On reflective mode, checks if the field value matches with the config field value
-     * @return true if matches or when is not in reflective mode, false otherwise
-     */
-    boolean reflected();
-
-    /**
      * Validates the field value, resets to default value if it doesn't match the validation
      */
     void validate();

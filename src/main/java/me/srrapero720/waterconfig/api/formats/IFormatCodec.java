@@ -38,5 +38,5 @@ public interface IFormatCodec {
      * @param filePath path of the file to write
      * @return a new writer of the current format
      */
-    IFormatWriter createWritter(Path filePath) throws IOException;
+    IFormatWriter createWriter(Path filePath) throws IOException;
 }

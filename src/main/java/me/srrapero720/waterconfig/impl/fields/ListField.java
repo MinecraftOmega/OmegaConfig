@@ -45,7 +45,7 @@ public final class ListField<T> extends CollectionField<List<T>, T> {
         }
         // TRUNCATE VALUES
         if (this.limit > 0 && this.get().size() > this.limit) {
-            this.set(this.get().stream().distinct().limit(this.limit).collect(Collectors.toCollection(ArrayList::new)));
+            this.set(new ArrayList<>(this.get().subList(0, this.limit)));
         }
     }
 

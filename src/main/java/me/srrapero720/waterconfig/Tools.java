@@ -6,7 +6,8 @@ import java.io.Closeable;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.lang.reflect.TypeVariable;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collection;
@@ -64,12 +65,19 @@ public class Tools {
             return type.getComponentType();
         }
 
-        TypeVariable<?>[] types = type.getTypeParameters();
+        Type genericType = field.getGenericType();
+        if (genericType instanceof ParameterizedType paramType) {
+            Type[] typeArgs = paramType.getActualTypeArguments();
+            if (typeArgs.length == 0) return null;
+            if (typeArgs.length == 1) {
+                if (typeArgs[0] instanceof Class<?> c) return toBoxed(c);
+                if (typeArgs[0] instanceof ParameterizedType pt) return (Class<?>) pt.getRawType();
+                return null;
+            }
+            throw new IllegalArgumentException("Class has more than 2 type arguments");
+        }
 
-        if (types.length == 0) return null;
-        if (types.length == 1) return types[0].getClass(); // toBoxed in generics is not needed
-
-        throw new IllegalArgumentException("Class has more than 2 type arguments");
+        return null;
     }
 
     public static String concat(String prefix, String suffix, char key, Collection<String> strings) {
@@ -152,9 +160,9 @@ public class Tools {
         }
     }
 
-    public static void setFieldValue(Field field, Object context, double byteValue) {
+    public static void setFieldValue(Field field, Object context, double doubleValue) {
         try {
-            field.setDouble(context, byteValue);
+            field.setDouble(context, doubleValue);
         } catch (ReflectiveOperationException e) {
             throwUpdateValueException(field, e);
         }

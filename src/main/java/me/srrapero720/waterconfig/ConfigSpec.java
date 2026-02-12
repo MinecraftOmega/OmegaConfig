@@ -25,7 +25,7 @@ public final class ConfigSpec extends ConfigGroup {
 
     // STRING COMMENTS
     private static final String COMMENT_ALLOW_EMPTY = "Allows (non-null) empty values";
-    private static final String COMMENT_DENY_EMPTY = "Must no be empty";
+    private static final String COMMENT_DENY_EMPTY = "Must not be empty";
     private static final String COMMENT_MUST_START_WITH = "Value must start with %s";
     private static final String COMMENT_MUST_END_WITH = "Value must end with %s";
     private static final String COMMENT_MUST_START_AND_END_WITH = "Value must start with %s and end with %s";
@@ -55,11 +55,15 @@ public final class ConfigSpec extends ConfigGroup {
     private final IFormatCodec format;
     private final String suffix;
     private final Path filePath;
-    private final HashSet<IConfigField<?, ?>> dirtyFields = new LinkedHashSet<>();
+    // TODO: I need to revisit this, the idea was optimize writing just the needed value in the written indexes, but that will cause a lot of headaches
+    private final Set<IConfigField<?, ?>> dirtyFields = new LinkedHashSet<>();
     private final int backups;
+    // Not volatile by design: delayed cross-thread visibility is acceptable for a config library.
+    // The worker thread polls on a time gap, so a few milliseconds of staleness is meaningless.
     boolean dirty;
     boolean loaded;
     boolean reload;
+    volatile boolean slow;
 
     private ConfigSpec(String name, IFormatCodec format, String suffix, Path path, int backups) {
         super(name, null);
@@ -122,17 +126,24 @@ public final class ConfigSpec extends ConfigGroup {
         this.dirty = dirty;
     }
 
+    boolean isSlow() {
+        return this.slow;
+    }
+
+    void setSlow(boolean slow) {
+        this.slow = slow;
+    }
+
+    // TODO: must return a boolean or just throw instead?
     boolean load() throws IOException {
         if (!this.filePath.toFile().exists()) {
             return false;
         }
-        try {
-            IFormatReader reader = this.format.createReader(this.filePath);
+        try (IFormatReader reader = this.format.createReader(this.filePath)) {
             this.load(this, reader);
-            reader.close();
-        } catch (Exception e) {
-            return false;
         }
+        this.loaded = true;
+        this.reload = false;
         return true;
     }
 
@@ -169,19 +180,17 @@ public final class ConfigSpec extends ConfigGroup {
                 }
             }
         }
-        this.loaded = true;
-        this.reload = false;
     }
 
     void save() throws IOException {
-        IFormatWriter writer = this.format.createWritter(this.filePath);
-        for (String c: this.comments()) {
-            writer.write(c);
+        try (IFormatWriter writer = this.format.createWriter(this.filePath)) {
+            for (String c : this.comments()) {
+                writer.write(c);
+            }
+            writer.push(this.name());
+            this.save(this, writer);
+            writer.pop();
         }
-        writer.push(this.name());
-        this.save(this, writer);
-        writer.pop();
-        writer.close();
     }
 
     private void save(ConfigGroup group, IFormatWriter writer) {
@@ -208,12 +217,12 @@ public final class ConfigSpec extends ConfigGroup {
                     String min = numberField.minValueString();
                     String max = numberField.maxValueString();
 
-                    if (min == null && max != null) {
-                        writer.write(String.format(COMMENT_MUST_BE_GREATER_THAN, max));
-                    } else if (min != null && max == null) {
-                        writer.write(String.format(COMMENT_MUST_BE_LESS_THAN, min));
+                    if (min != null && max == null) {
+                        writer.write(String.format(COMMENT_MUST_BE_GREATER_THAN, min));
+                    } else if (min == null && max != null) {
+                        writer.write(String.format(COMMENT_MUST_BE_LESS_THAN, max));
                     } else if (min != null) {
-                        writer.write(String.format(COMMENT_MUST_BE_IN_RANGE, min, max));
+                        writer.write(String.format(COMMENT_MUST_BE_IN_RANGE, max, min));
                     }
                 }
 
@@ -279,7 +288,6 @@ public final class ConfigSpec extends ConfigGroup {
                 throw new RuntimeException("Failed to save field '" + field.id() + "' in config spec '" + this.name() + "'", e);
             }
         }
-        this.dirty = false;
     }
 
 
@@ -951,7 +959,7 @@ public final class ConfigSpec extends ConfigGroup {
         private FloatFieldBuilder(String name, ConfigGroup group, float defaultValue) {
             super(name, group);
             this.defaultValue = defaultValue;
-            this.min = Float.MIN_VALUE;
+            this.min = -Float.MAX_VALUE;
             this.max = Float.MAX_VALUE;
         }
 
@@ -977,7 +985,7 @@ public final class ConfigSpec extends ConfigGroup {
         private DoubleFieldBuilder(String name, ConfigGroup group, double defaultValue) {
             super(name, group);
             this.defaultValue = defaultValue;
-            this.min = Double.MIN_VALUE;
+            this.min = -Double.MAX_VALUE;
             this.max = Double.MAX_VALUE;
         }
 

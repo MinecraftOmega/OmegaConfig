@@ -36,7 +36,7 @@ public class JSON5Format implements IFormatCodec {
     }
 
     @Override
-    public IFormatWriter createWritter(Path filePath) throws IOException {
+    public IFormatWriter createWriter(Path filePath) throws IOException {
         return new FormatWriter(filePath);
     }
 
@@ -255,8 +255,23 @@ public class JSON5Format implements IFormatCodec {
                 char c = data[i];
                 boolean whitespace = Character.isWhitespace(c);
 
+                // LINE COMMENT: ends at newline
                 if (comment && c == '\n') {
                     comment = false;
+                    continue;
+                }
+
+                // BLOCK COMMENT: skip content, detect */
+                if (commentBlock) {
+                    if (c == JSON_COMMENT_BLOCK && i + 1 < data.length && data[i + 1] == JSON_COMMENT_LINE) {
+                        commentBlock = false;
+                        i++;
+                    }
+                    continue;
+                }
+
+                // SKIP LINE COMMENT CONTENT
+                if (comment) {
                     continue;
                 }
 
@@ -265,32 +280,25 @@ public class JSON5Format implements IFormatCodec {
                     continue;
                 }
 
+                // COMMENT START DETECTION: // or /* (before finished check to allow trailing comments)
+                if (c == JSON_COMMENT_LINE && capturing != KEY && capturing != VALUE_STRING && capturing != ARRAY_STRING) {
+                    if (i + 1 < data.length) {
+                        char next = data[i + 1];
+                        if (next == JSON_COMMENT_LINE) {
+                            comment = true;
+                            i++;
+                            continue;
+                        } else if (next == JSON_COMMENT_BLOCK) {
+                            commentBlock = true;
+                            i++;
+                            continue;
+                        }
+                    }
+                }
+
                 // THROW WHEN JSON SPEC IS FINISHED BUT STILL CONTAINS DATA (WTF)
                 if (finished) {
                     throw new EOFException("Reached end of JSON spec but file still contains data");
-                }
-
-                if (c == JSON_COMMENT_LINE) {
-                    char next = data[i++];
-                    if (commentBlock && next != JSON_COMMENT_LINE) {
-                        throw new IOException("Unexpected character after comment end line: " + next);
-                    }
-                    if (next == JSON_COMMENT_LINE) {
-                        // DOUBLE SLASH COMMENT
-                        comment = true;
-                        continue;
-                    } else if (next == JSON_COMMENT_BLOCK) {
-                        // BLOCK COMMENT START
-                        commentBlock = true;
-                        continue;
-                    } else {
-                        // NOT A COMMENT, REVERT
-                        i--;
-                    }
-                }
-
-                if (comment || commentBlock) {
-                    continue;
                 }
 
                 // VALIDATE CHARS
@@ -512,12 +520,6 @@ public class JSON5Format implements IFormatCodec {
 
         private void putArrayValue() {
             arrayValues.add(value.toString());
-            value.setLength(0);
-            escaped = false;
-        }
-
-        private void putValue() {
-            value.append(value.toString());
             value.setLength(0);
             escaped = false;
         }
