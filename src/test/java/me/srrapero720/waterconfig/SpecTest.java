@@ -26,6 +26,7 @@ public class SpecTest {
 
     @BeforeAll
     static void setup() {
+        WaterConfig.init();
         WaterConfig.setPath(tempDir);
     }
 
