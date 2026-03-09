@@ -226,7 +226,7 @@ public class WaterConfig {
             else if (specFieldType.isArray()) fieldBuilder = builder.defineArray(name, field, instance, Tools.subTypeOf(field));
             else if (Enum.class.isAssignableFrom(specFieldType)) fieldBuilder = builder.defineEnum(name, field, instance);
             else if (specFieldType.isAnnotationPresent(Spec.class)) {
-                if (!Modifier.isFinal(specFieldType.getModifiers()))
+                if (!Modifier.isFinal(field.getModifiers()))
                     throw new IllegalArgumentException("Field '" + name + "' of type '" + specFieldType.getName() + "' must be final to be used as nested Spec");
 
                 Object nestedInstance = Tools.valueFrom(field, instance);
