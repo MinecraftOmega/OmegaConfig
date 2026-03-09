@@ -123,6 +123,32 @@ public class WaterConfig {
         return register(builder.build());
     }
 
+    public static ConfigSpec registerBlocking(Object instance) {
+        ConfigSpec spec = register(instance);
+        while (!spec.isLoaded()) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Thread was interrupted while waiting for config to load", e);
+            }
+        }
+        return spec;
+    }
+
+    public static ConfigSpec registerBlocking(Class<?> clazz) {
+        ConfigSpec spec = register(clazz);
+        while (!spec.isLoaded()) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Thread was interrupted while waiting for config to load", e);
+            }
+        }
+        return spec;
+    }
+
     private static void register$iterateClass(Object instance, Class<?> specClass, ConfigSpec.SpecBuilder builder, boolean isStatic) {
         // FIRST, REGISTER ALL FIELDS
         for (Field field: specClass.getDeclaredFields()) {
