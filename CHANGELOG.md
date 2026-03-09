@@ -1,3 +1,6 @@
+# VERSION 0.6.3.beta
+- Fixed TOML format reader was not reading yet fields properly
+
 # VERSION 0.6.2.beta
 - Added 'registerBlocking' for config specs that requires the spec begin loaded for bootstrap (e.g. for use in static initializers)
 - Fixed static spec class instances checkes wrongly if the class was final and not if the field was final
