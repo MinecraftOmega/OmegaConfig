@@ -52,6 +52,7 @@ public class TOMLFormat implements IFormatCodec {
         @Override
         public void write(String fieldName, String value, Class<?> type, Class<?> subType) {
             ensureTableHeader();
+            String indent = indent();
 
             // Add blank line before comments for readability
             if (!firstInSection && !this.comments.isEmpty()) {
@@ -60,12 +61,12 @@ public class TOMLFormat implements IFormatCodec {
 
             // Write comments
             for (String comment : this.comments) {
-                this.buffer.append("# ").append(comment).append("\n");
+                this.buffer.append(indent).append("# ").append(comment).append("\n");
             }
             this.comments.clear();
 
             // Write key = value
-            this.buffer.append(escapeKey(fieldName)).append(" = ");
+            this.buffer.append(indent).append(escapeKey(fieldName)).append(" = ");
             this.buffer.append(formatValue(value, type));
             this.buffer.append("\n");
             this.firstInSection = false;
@@ -74,6 +75,7 @@ public class TOMLFormat implements IFormatCodec {
         @Override
         public void write(String fieldName, String[] values, Class<?> type, Class<?> subType) {
             ensureTableHeader();
+            String indent = indent();
 
             // Add blank line before comments for readability
             if (!firstInSection && !this.comments.isEmpty()) {
@@ -82,17 +84,17 @@ public class TOMLFormat implements IFormatCodec {
 
             // Write comments
             for (String comment: this.comments) {
-                this.buffer.append("# ").append(comment).append("\n");
+                this.buffer.append(indent).append("# ").append(comment).append("\n");
             }
             this.comments.clear();
 
             // Write array
-            this.buffer.append(escapeKey(fieldName)).append(" = [");
+            this.buffer.append(indent).append(escapeKey(fieldName)).append(" = [");
 
             if (values.length > 0) {
                 this.buffer.append("\n");
                 for (int i = 0; i < values.length; i++) {
-                    this.buffer.append("  ").append(formatValue(values[i], subType));
+                    this.buffer.append(indent).append("  ").append(formatValue(values[i], subType));
                     if (i < values.length - 1) {
                         this.buffer.append(",");
                     }
@@ -100,19 +102,19 @@ public class TOMLFormat implements IFormatCodec {
                 }
             }
 
-            this.buffer.append("]\n");
+            this.buffer.append(indent).append("]\n");
         }
 
         @Override
         public void push(String groupName) {
+            // Root push is transparent — matches JSON5/CFG behavior where the
+            // spec name is not part of the file structure
+            if (this.group.isEmpty()) {
+                this.group.push(groupName);
+                return;
+            }
             this.group.push(groupName);
             this.tableHeaderWritten = false;
-            // Eagerly emit the root table header so the reader always sees
-            // the bare spec name as the first table, even when there are no
-            // root-level scalar fields (only nested groups).
-            if (this.group.size() == 1) {
-                ensureTableHeader();
-            }
         }
 
         @Override
@@ -137,6 +139,9 @@ public class TOMLFormat implements IFormatCodec {
                 }
                 if (!tableName.isEmpty()) {
                     buffer.append("[").append(tableName).append("]\n");
+                } else if (!currentTable.isEmpty()) {
+                    // Returning to root after a section — emit [] reset marker
+                    buffer.append("[]\n");
                 }
                 currentTable = tableName;
                 tableHeaderWritten = true;
@@ -145,11 +150,13 @@ public class TOMLFormat implements IFormatCodec {
         }
 
         private String buildTableName() {
-            if (group.isEmpty()) {
+            // Skip root element (spec name) — it's transparent
+            if (group.size() <= 1) {
                 return "";
             }
             StringBuilder sb = new StringBuilder();
             Iterator<String> it = group.iterator();
+            it.next(); // skip root
             while (it.hasNext()) {
                 sb.append(escapeKey(it.next()));
                 if (it.hasNext()) {
@@ -157,6 +164,11 @@ public class TOMLFormat implements IFormatCodec {
                 }
             }
             return sb.toString();
+        }
+
+        private String indent() {
+            int level = Math.max(0, group.size() - 1);
+            return "  ".repeat(level);
         }
 
         private String escapeKey(String key) {
@@ -206,7 +218,6 @@ public class TOMLFormat implements IFormatCodec {
         private final LinkedHashMap<String, Object> values = new LinkedHashMap<>();
         private final Stack<String> group = new Stack<>();
         private String currentTable = "";
-        private String rootTable = null;
 
         public FormatReader(Path path) throws IOException {
             char[] data = new String(Tools.readAllBytes(path), StandardCharsets.UTF_8).toCharArray();
@@ -288,13 +299,6 @@ public class TOMLFormat implements IFormatCodec {
             }
 
             currentTable = tableName.toString().trim();
-
-            // Track the first table as root — its prefix is stripped from keys
-            // so that ConfigSpec.load() (which doesn't push the spec name) can
-            // look up values without the root table prefix, matching all other formats.
-            if (rootTable == null) {
-                rootTable = currentTable;
-            }
 
             // Skip to end of line
             return skipToEndOfLine(data, i);
@@ -658,20 +662,7 @@ public class TOMLFormat implements IFormatCodec {
             if (currentTable.isEmpty()) {
                 return key;
             }
-            // Strip the root table prefix so keys are stored without it,
-            // matching the behavior of JSON5/JSON/CFG formats where the
-            // root push (spec name) doesn't affect key paths.
-            String effective = currentTable;
-            if (rootTable != null && effective.startsWith(rootTable)) {
-                effective = effective.substring(rootTable.length());
-                if (effective.startsWith(".")) {
-                    effective = effective.substring(1);
-                }
-            }
-            if (effective.isEmpty()) {
-                return key;
-            }
-            return effective + "." + key;
+            return currentTable + "." + key;
         }
 
         @Override

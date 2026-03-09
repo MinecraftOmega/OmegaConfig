@@ -585,10 +585,9 @@ public class FormatTest {
             writeTestSpec(writer);
 
             String output = Files.readString(file, StandardCharsets.UTF_8);
-            // TOML: root push writes [test_spec], nested becomes [test_spec.nested].
-            // After pop from nested, [test_spec] is re-emitted for subsequent fields.
+            // TOML: root push is transparent, nested becomes [nested].
+            // After pop from nested, [] resets to root for subsequent fields.
             String expected = """
-                    [test_spec]
                     # Test spec
                     # With multiple comments
                     count = 42
@@ -596,12 +595,12 @@ public class FormatTest {
                     enabled = true
                     ratio = 3.14
 
-                    [test_spec.nested]
-                    # Nested section
-                    description = "inner"
-                    weight = 0.5
+                    [nested]
+                      # Nested section
+                      description = "inner"
+                      weight = 0.5
 
-                    [test_spec]
+                    []
                     tags = [
                       "alpha",
                       "beta"
@@ -673,7 +672,6 @@ public class FormatTest {
             Path file = tempDir.resolve("comments.toml");
             Files.writeString(file, """
                     # Root comment
-                    [test_spec]
                     # Comment before value
                     count = 42
                     label = "hello world"
@@ -691,7 +689,6 @@ public class FormatTest {
         void testMathExpressionCapture() throws IOException {
             Path file = tempDir.resolve("math.toml");
             Files.writeString(file, """
-                    [test]
                     count = 2 + 3
                     ratio = 1.5 * 4
                     power = 5 ^ 2
