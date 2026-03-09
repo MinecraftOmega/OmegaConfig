@@ -44,6 +44,84 @@ public class FormatTest {
         writer.close();
     }
 
+    /**
+     * Writes a structure mirroring WaterMediaConfig: only nested groups at root
+     * (no root-level scalar fields). This is the pattern that exposed the TOML
+     * root-table bug — the root [specName] was never emitted when there were
+     * no root scalars.
+     *
+     * Structure:
+     *   watermedia
+     *     decoders
+     *       pngFailOnCorruptedData = true  (boolean)
+     *       pngUseBKGDChunk = false         (boolean)
+     *     network
+     *       enableServer = true             (boolean, non-default)
+     *       forceEnableServer = false       (boolean)
+     *       serverPort = 25580              (int)
+     *       remoteHost = "http://localhost:25580/"  (String)
+     *       token = "secret"                (String)
+     *     media
+     *       defaultQuality = "HIGHEST"      (String, enum-like)
+     *       disableFFMPEG = false           (boolean)
+     */
+    private void writeWaterMediaSpec(IFormatWriter writer) throws IOException {
+        writer.push("watermedia");
+
+        writer.write("DecodersAPI settings");
+        writer.push("decoders");
+        writer.write("pngFailOnCorruptedData", "true", Boolean.class, null);
+        writer.write("pngUseBKGDChunk", "false", Boolean.class, null);
+        writer.pop();
+
+        writer.write("NetworkAPI settings");
+        writer.push("network");
+        writer.write("enableServer", "true", Boolean.class, null);
+        writer.write("forceEnableServer", "false", Boolean.class, null);
+        writer.write("serverPort", "25580", Integer.class, null);
+        writer.write("remoteHost", "http://localhost:25580/", String.class, null);
+        writer.write("token", "secret", String.class, null);
+        writer.pop();
+
+        writer.write("MediaAPI settings");
+        writer.push("media");
+        writer.write("defaultQuality", "HIGHEST", String.class, null);
+        writer.write("disableFFMPEG", "false", Boolean.class, null);
+        writer.pop();
+
+        writer.pop();
+        writer.close();
+    }
+
+    /**
+     * Reads back a WaterMediaConfig structure and asserts all values match,
+     * verifying that nested-group-only specs round-trip correctly.
+     */
+    private void assertWaterMediaSpec(IFormatReader reader) throws IOException {
+        // decoders
+        reader.push("decoders");
+        assertEquals("true", reader.read("pngFailOnCorruptedData"));
+        assertEquals("false", reader.read("pngUseBKGDChunk"));
+        reader.pop();
+
+        // network
+        reader.push("network");
+        assertEquals("true", reader.read("enableServer"), "enableServer should be 'true', not the default");
+        assertEquals("false", reader.read("forceEnableServer"));
+        assertEquals("25580", reader.read("serverPort"));
+        assertEquals("http://localhost:25580/", reader.read("remoteHost"));
+        assertEquals("secret", reader.read("token"));
+        reader.pop();
+
+        // media
+        reader.push("media");
+        assertEquals("HIGHEST", reader.read("defaultQuality"));
+        assertEquals("false", reader.read("disableFFMPEG"));
+        reader.pop();
+
+        reader.close();
+    }
+
     // ========================================================================
     // CFG Format Tests
     // ========================================================================
@@ -175,6 +253,13 @@ public class FormatTest {
         }
 
         @Test
+        void testWaterMediaRoundTrip() throws IOException {
+            Path file = tempDir.resolve("watermedia.cfg");
+            writeWaterMediaSpec(new CFGFormat().createWriter(file));
+            assertWaterMediaSpec(new CFGFormat().createReader(file));
+        }
+
+        @Test
         void testMathExpressionCapture() throws IOException {
             Path file = tempDir.resolve("math.cfg");
             Files.writeString(file, """
@@ -279,6 +364,13 @@ public class FormatTest {
             assertNotNull(tags);
             assertArrayEquals(new String[]{"alpha", "beta"}, tags);
             reader.close();
+        }
+
+        @Test
+        void testWaterMediaRoundTrip() throws IOException {
+            Path file = tempDir.resolve("watermedia.json5");
+            writeWaterMediaSpec(new JSON5Format().createWriter(file));
+            assertWaterMediaSpec(new JSON5Format().createReader(file));
         }
 
         @Test
@@ -453,6 +545,13 @@ public class FormatTest {
         }
 
         @Test
+        void testWaterMediaRoundTrip() throws IOException {
+            Path file = tempDir.resolve("watermedia.json");
+            writeWaterMediaSpec(new JSONFormat().createWriter(file));
+            assertWaterMediaSpec(new JSONFormat().createReader(file));
+        }
+
+        @Test
         void testMathExpressionCapture() throws IOException {
             Path file = tempDir.resolve("math.json");
             Files.writeString(file, """
@@ -560,6 +659,13 @@ public class FormatTest {
             assertNotNull(tags);
             assertArrayEquals(new String[]{"alpha", "beta"}, tags);
             reader.close();
+        }
+
+        @Test
+        void testWaterMediaRoundTrip() throws IOException {
+            Path file = tempDir.resolve("watermedia.toml");
+            writeWaterMediaSpec(new TOMLFormat().createWriter(file));
+            assertWaterMediaSpec(new TOMLFormat().createReader(file));
         }
 
         @Test
@@ -674,6 +780,13 @@ public class FormatTest {
             assertNotNull(tags);
             assertArrayEquals(new String[]{"alpha", "beta"}, tags);
             reader.close();
+        }
+
+        @Test
+        void testWaterMediaRoundTrip() throws IOException {
+            Path file = tempDir.resolve("watermedia.properties");
+            writeWaterMediaSpec(new PROPFormat().createWriter(file));
+            assertWaterMediaSpec(new PROPFormat().createReader(file));
         }
 
         @Test
