@@ -1,3 +1,6 @@
+# VERSION 0.6.4.beta
+- TOML: make root push transparent to avoid creating a redundant root table
+
 # VERSION 0.6.3.beta
 - Fixed TOML format reader was not reading yet fields properly
 
