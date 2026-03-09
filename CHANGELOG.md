@@ -1,3 +1,9 @@
+# VERSION 0.6.2.beta
+- Added 'registerBlocking' for config specs that requires the spec begin loaded for bootstrap (e.g. for use in static initializers)
+- Fixed static spec class instances checkes wrongly if the class was final and not if the field was final
+- Fixed TOML format reader not reading fields properly
+- Fixed JSON5Format writer now properly writes booleans as primitives instead of strings
+
 # VERSION 0.6.1.beta
 - Fixed `triggerPanic()` no longer attempts save when I/O is stuck — only logs lost data and shuts down pools
 - Fixed `doProcess()` dirty/reload flags now cleared AFTER successful I/O instead of before
