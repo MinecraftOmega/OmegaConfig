@@ -200,6 +200,7 @@ public class TOMLFormat implements IFormatCodec {
         private final LinkedHashMap<String, Object> values = new LinkedHashMap<>();
         private final Stack<String> group = new Stack<>();
         private String currentTable = "";
+        private String rootTable = null;
 
         public FormatReader(Path path) throws IOException {
             char[] data = new String(Tools.readAllBytes(path), StandardCharsets.UTF_8).toCharArray();
@@ -281,6 +282,13 @@ public class TOMLFormat implements IFormatCodec {
             }
 
             currentTable = tableName.toString().trim();
+
+            // Track the first table as root — its prefix is stripped from keys
+            // so that ConfigSpec.load() (which doesn't push the spec name) can
+            // look up values without the root table prefix, matching all other formats.
+            if (rootTable == null) {
+                rootTable = currentTable;
+            }
 
             // Skip to end of line
             return skipToEndOfLine(data, i);
@@ -644,7 +652,20 @@ public class TOMLFormat implements IFormatCodec {
             if (currentTable.isEmpty()) {
                 return key;
             }
-            return currentTable + "." + key;
+            // Strip the root table prefix so keys are stored without it,
+            // matching the behavior of JSON5/JSON/CFG formats where the
+            // root push (spec name) doesn't affect key paths.
+            String effective = currentTable;
+            if (rootTable != null && effective.startsWith(rootTable)) {
+                effective = effective.substring(rootTable.length());
+                if (effective.startsWith(".")) {
+                    effective = effective.substring(1);
+                }
+            }
+            if (effective.isEmpty()) {
+                return key;
+            }
+            return effective + "." + key;
         }
 
         @Override
