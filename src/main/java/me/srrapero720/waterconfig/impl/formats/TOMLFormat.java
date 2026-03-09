@@ -107,6 +107,12 @@ public class TOMLFormat implements IFormatCodec {
         public void push(String groupName) {
             this.group.push(groupName);
             this.tableHeaderWritten = false;
+            // Eagerly emit the root table header so the reader always sees
+            // the bare spec name as the first table, even when there are no
+            // root-level scalar fields (only nested groups).
+            if (this.group.size() == 1) {
+                ensureTableHeader();
+            }
         }
 
         @Override
