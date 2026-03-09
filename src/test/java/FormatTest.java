@@ -207,14 +207,13 @@ public class FormatTest {
             writeTestSpec(writer);
 
             String output = Files.readString(file, StandardCharsets.UTF_8);
-            // JSON5: booleans are quoted (isString check), root pop adds }\n, close adds \n
             String expected = """
                     // Test spec
                     // With multiple comments
                     {
                     \t"count": 42,
                     \t"label": "hello world",
-                    \t"enabled": "true",
+                    \t"enabled": true,
                     \t"ratio": 3.14,
 
                     \t// Nested section
@@ -519,12 +518,10 @@ public class FormatTest {
             writeTestSpec(writer);
 
             IFormatReader reader = new TOMLFormat().createReader(file);
-            reader.push("test_spec");
             assertEquals("42", reader.read("count"));
             assertEquals("hello world", reader.read("label"));
             assertEquals("true", reader.read("enabled"));
             assertEquals("3.14", reader.read("ratio"));
-            reader.pop();
             reader.close();
         }
 
@@ -535,11 +532,9 @@ public class FormatTest {
             writeTestSpec(writer);
 
             IFormatReader reader = new TOMLFormat().createReader(file);
-            reader.push("test_spec");
             reader.push("nested");
             assertEquals("inner", reader.read("description"));
             assertEquals("0.5", reader.read("weight"));
-            reader.pop();
             reader.pop();
             reader.close();
         }
@@ -551,7 +546,6 @@ public class FormatTest {
             writeTestSpec(writer);
 
             IFormatReader reader = new TOMLFormat().createReader(file);
-            reader.push("test_spec");
             assertEquals("42", reader.read("count"));
             assertEquals("hello world", reader.read("label"));
             assertEquals("true", reader.read("enabled"));
@@ -565,7 +559,6 @@ public class FormatTest {
             String[] tags = reader.readArray("tags");
             assertNotNull(tags);
             assertArrayEquals(new String[]{"alpha", "beta"}, tags);
-            reader.pop();
             reader.close();
         }
 
@@ -582,11 +575,9 @@ public class FormatTest {
                     enabled = true
                     """);
             IFormatReader reader = new TOMLFormat().createReader(file);
-            reader.push("test_spec");
             assertEquals("42", reader.read("count"));
             assertEquals("hello world", reader.read("label"));
             assertEquals("true", reader.read("enabled"));
-            reader.pop();
             reader.close();
         }
 
@@ -601,12 +592,10 @@ public class FormatTest {
                     root = ~25
                     """);
             IFormatReader reader = new TOMLFormat().createReader(file);
-            reader.push("test");
             assertEquals("2 + 3", reader.read("count"));
             assertEquals("1.5 * 4", reader.read("ratio"));
             assertEquals("5 ^ 2", reader.read("power"));
             assertEquals("~25", reader.read("root"));
-            reader.pop();
             reader.close();
         }
     }

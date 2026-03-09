@@ -72,7 +72,7 @@ public class JSON5Format implements IFormatCodec {
                 this.beginned = true;
             }
 
-            boolean isString = !(Number.class.isAssignableFrom(type)) || Boolean.class.isAssignableFrom(type);
+            boolean isString = !Number.class.isAssignableFrom(type) && !Boolean.class.isAssignableFrom(type) && !boolean.class.isAssignableFrom(type);
 
             // WRITE SPACES
             for (String comment: this.comments) {
@@ -112,7 +112,7 @@ public class JSON5Format implements IFormatCodec {
                 this.beginned = true;
             }
 
-            boolean isString = (!subType.isAssignableFrom(Number.class) || !subType.isAssignableFrom(Boolean.class));
+            boolean isString = !Number.class.isAssignableFrom(subType) && !Boolean.class.isAssignableFrom(subType) && !boolean.class.isAssignableFrom(subType);
 
             for (String comment: this.comments) {
                 this.buffer.append("\t".repeat(this.group.size()));
