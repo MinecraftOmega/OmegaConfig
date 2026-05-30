@@ -8,12 +8,12 @@ import java.util.Set;
 
 public final class EnumField<T extends Enum<T>> extends BaseConfigField<T, T> implements Comparable<T> {
 
-    public EnumField(String name, ConfigGroup group, Set<String> comments, Field field, Object context, Control control) {
-        super(name, group, comments, field, context, coherent(name, control));
+    public EnumField(String name, ConfigGroup group, Set<String> comments, Field field, Object context, Control control, String suffix) {
+        super(name, group, comments, field, context, coherent(name, control), suffix);
     }
 
-    public EnumField(String name, ConfigGroup group, Set<String> comments, T defaultValue, Control control) {
-        super(name, group, comments, defaultValue, coherent(name, control));
+    public EnumField(String name, ConfigGroup group, Set<String> comments, T defaultValue, Control control, String suffix) {
+        super(name, group, comments, defaultValue, coherent(name, control), suffix);
     }
 
     private static Control coherent(String name, Control control) {

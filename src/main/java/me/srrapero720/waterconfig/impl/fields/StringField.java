@@ -20,8 +20,8 @@ public final class StringField extends BaseConfigField<String, Void> {
     public final Mode mode;
     private final Pattern compiledPattern;
 
-    public StringField(String name, ConfigGroup group, Set<String> comments, String startsWith, String endsWith, boolean allowEmpty, String condition, int regexFlags, Mode mode, Field field, Object context, Control control) {
-        super(name, group, comments, field, context, control);
+    public StringField(String name, ConfigGroup group, Set<String> comments, String startsWith, String endsWith, boolean allowEmpty, String condition, int regexFlags, Mode mode, Field field, Object context, Control control, String suffix) {
+        super(name, group, comments, field, context, control, suffix);
         this.startsWith = startsWith;
         this.endsWith = endsWith;
         this.allowEmpty = allowEmpty;
@@ -31,8 +31,8 @@ public final class StringField extends BaseConfigField<String, Void> {
         this.compiledPattern = compilePattern(condition, regexFlags, mode);
     }
 
-    public StringField(String name, ConfigGroup group, Set<String> comments, String startsWith, String endsWith, boolean allowEmpty, String condition, int regexFlags, Mode mode, String defaultValue, Control control) {
-        super(name, group, comments, defaultValue, control);
+    public StringField(String name, ConfigGroup group, Set<String> comments, String startsWith, String endsWith, boolean allowEmpty, String condition, int regexFlags, Mode mode, String defaultValue, Control control, String suffix) {
+        super(name, group, comments, defaultValue, control, suffix);
         this.startsWith = startsWith;
         this.endsWith = endsWith;
         this.allowEmpty = allowEmpty;

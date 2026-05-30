@@ -12,15 +12,15 @@ public final class FloatField extends BaseNumberField<Float> implements DoubleSu
     public final float max;
     private float primitive;
 
-    public FloatField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, float min, float max, Field field, Object context, Control control) {
-        super(name, group, comments, math, strictMath, field, context, control);
+    public FloatField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, float min, float max, Field field, Object context, Control control, String suffix) {
+        super(name, group, comments, math, strictMath, field, context, control, suffix);
         this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
     }
 
-    public FloatField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, float min, float max, Float defaultValue, Control control) {
-        super(name, group, comments, math, strictMath, defaultValue, control);
+    public FloatField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, float min, float max, Float defaultValue, Control control, String suffix) {
+        super(name, group, comments, math, strictMath, defaultValue, control, suffix);
         this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;

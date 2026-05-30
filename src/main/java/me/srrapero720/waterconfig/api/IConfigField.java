@@ -76,6 +76,17 @@ public interface IConfigField<T, S> extends Consumer<T>, Supplier<T> {
     Control control();
 
     /**
+     * Display hint describing the unit or kind of value (e.g. {@code "MB"}, {@code "KB"}, {@code "SECS"}).
+     *
+     * <p>Purely informational metadata for external config managers / UIs. It is never interpreted
+     * by the runtime and has no effect on parsing, validation or storage.</p>
+     *
+     * @return the suffix declared via {@link me.srrapero720.waterconfig.api.annotations.Spec.Field#suffix()}
+     * or the builder, empty string when none was specified.
+     */
+    String suffix();
+
+    /**
      * Sets config to default value
      */
     void reset();

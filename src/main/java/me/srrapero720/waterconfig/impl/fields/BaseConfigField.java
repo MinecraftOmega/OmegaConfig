@@ -16,6 +16,7 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
     private final Mode mode;
     private final Set<String> comments;
     private final Control control;
+    private final String suffix;
     public final T defaultValue;
 
     // FIELD
@@ -23,7 +24,7 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
     private final Field field;
     private T value;
 
-    protected BaseConfigField(String name, ConfigGroup group, Set<String> comments, Field field, Object context, Control control) {
+    protected BaseConfigField(String name, ConfigGroup group, Set<String> comments, Field field, Object context, Control control, String suffix) {
         this.name = name;
         this.group = group;
         this.comments = comments;
@@ -32,10 +33,11 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
         this.field = field;
         this.context = context;
         this.control = (control == null || control == Control.DEFAULT) ? Control.INPUT : control;
+        this.suffix = suffix == null ? "" : suffix;
         this.group.append(this);
     }
 
-    protected BaseConfigField(String name, ConfigGroup group, Set<String> comments, T defaultValue, Control control) {
+    protected BaseConfigField(String name, ConfigGroup group, Set<String> comments, T defaultValue, Control control, String suffix) {
         this.name = name;
         this.group = group;
         this.comments = comments;
@@ -44,6 +46,7 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
         this.field = null;
         this.context = null;
         this.control = (control == null || control == Control.DEFAULT) ? Control.INPUT : control;
+        this.suffix = suffix == null ? "" : suffix;
         this.group.append(this);
     }
 
@@ -75,6 +78,11 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
     @Override
     public Control control() {
         return this.control;
+    }
+
+    @Override
+    public String suffix() {
+        return this.suffix;
     }
 
     // BUILDS THE EXCEPTION THROWN BY SUBCLASSES WHEN A CONTROL DOES NOT FIT THE FIELD

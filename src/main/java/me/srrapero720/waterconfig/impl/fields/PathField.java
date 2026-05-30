@@ -11,14 +11,14 @@ public class PathField extends BaseConfigField<Path, Void> {
     public final boolean runtimePath;
     public final boolean fileExists;
 
-    public PathField(String name, ConfigGroup group, Set<String> comments, boolean runtimePath, boolean fileExists, Path defaultValue, Control control) {
-        super(name, group, comments, defaultValue, coherent(name, control));
+    public PathField(String name, ConfigGroup group, Set<String> comments, boolean runtimePath, boolean fileExists, Path defaultValue, Control control, String suffix) {
+        super(name, group, comments, defaultValue, coherent(name, control), suffix);
         this.runtimePath = runtimePath;
         this.fileExists = fileExists;
     }
 
-    public PathField(String name, ConfigGroup group, Set<String> comments, boolean runtimePath, boolean fileExists, Field field, Object context, Control control) {
-        super(name, group, comments, field, context, coherent(name, control));
+    public PathField(String name, ConfigGroup group, Set<String> comments, boolean runtimePath, boolean fileExists, Field field, Object context, Control control, String suffix) {
+        super(name, group, comments, field, context, coherent(name, control), suffix);
         this.runtimePath = runtimePath;
         this.fileExists = fileExists;
     }

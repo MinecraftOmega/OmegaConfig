@@ -12,15 +12,15 @@ public final class ByteField extends BaseNumberField<Byte> implements IntSupplie
     public final byte max;
     private byte primitive;
 
-    public ByteField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, byte min, byte max, Field field, Object context, Control control) {
-        super(name, group, comments, math, strictMath, field, context, control);
+    public ByteField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, byte min, byte max, Field field, Object context, Control control, String suffix) {
+        super(name, group, comments, math, strictMath, field, context, control, suffix);
         this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
     }
 
-    public ByteField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, byte min, byte max, Byte defaultValue, Control control) {
-        super(name, group, comments, math, strictMath, defaultValue, control);
+    public ByteField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, byte min, byte max, Byte defaultValue, Control control, String suffix) {
+        super(name, group, comments, math, strictMath, defaultValue, control, suffix);
         this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;

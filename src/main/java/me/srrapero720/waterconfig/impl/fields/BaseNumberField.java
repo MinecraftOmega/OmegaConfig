@@ -10,14 +10,14 @@ public sealed abstract class BaseNumberField<T extends Number> extends BaseConfi
     private final boolean math;
     private final boolean strictMath;
 
-    protected BaseNumberField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, Field field, Object context, Control control) {
-        super(name, group, comments, field, context, coherent(name, control));
+    protected BaseNumberField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, Field field, Object context, Control control, String suffix) {
+        super(name, group, comments, field, context, coherent(name, control), suffix);
         this.math = math;
         this.strictMath = strictMath;
     }
 
-    protected BaseNumberField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, T defaultValue, Control control) {
-        super(name, group, comments, defaultValue, coherent(name, control));
+    protected BaseNumberField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, T defaultValue, Control control, String suffix) {
+        super(name, group, comments, defaultValue, coherent(name, control), suffix);
         this.math = math;
         this.strictMath = strictMath;
     }

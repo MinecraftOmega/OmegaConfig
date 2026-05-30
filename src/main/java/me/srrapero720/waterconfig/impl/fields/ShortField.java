@@ -12,15 +12,15 @@ public final class ShortField extends BaseNumberField<Short> implements IntSuppl
     public final short max;
     private short primitive;
 
-    public ShortField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, short min, short max, Field field, Object context, Control control) {
-        super(name, group, comments, math, strictMath, field, context, control);
+    public ShortField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, short min, short max, Field field, Object context, Control control, String suffix) {
+        super(name, group, comments, math, strictMath, field, context, control, suffix);
         this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
     }
 
-    public ShortField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, short min, short max, Short defaultValue, Control control) {
-        super(name, group, comments, math, strictMath, defaultValue, control);
+    public ShortField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, short min, short max, Short defaultValue, Control control, String suffix) {
+        super(name, group, comments, math, strictMath, defaultValue, control, suffix);
         this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;

@@ -12,15 +12,15 @@ public final class DoubleField extends BaseNumberField<Double> implements Double
     public final double max;
     private double primitive;
 
-    public DoubleField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, double min, double max, Field field, Object context, Control control) {
-        super(name, group, comments, math, strictMath, field, context, control);
+    public DoubleField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, double min, double max, Field field, Object context, Control control, String suffix) {
+        super(name, group, comments, math, strictMath, field, context, control, suffix);
         this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
     }
 
-    public DoubleField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, double min, double max, Double defaultValue, Control control) {
-        super(name, group, comments, math, strictMath, defaultValue, control);
+    public DoubleField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, double min, double max, Double defaultValue, Control control, String suffix) {
+        super(name, group, comments, math, strictMath, defaultValue, control, suffix);
         this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;

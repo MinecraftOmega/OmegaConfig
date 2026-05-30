@@ -12,15 +12,15 @@ public final class IntField extends BaseNumberField<Integer> implements IntSuppl
     public final int max;
     private int primitive;
 
-    public IntField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, int min, int max, Field field, Object context, Control control) {
-        super(name, group, comments, math, strictMath, field, context, control);
+    public IntField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, int min, int max, Field field, Object context, Control control, String suffix) {
+        super(name, group, comments, math, strictMath, field, context, control, suffix);
         this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
     }
 
-    public IntField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, int min, int max, Integer defaultValue, Control control) {
-        super(name, group, comments, math, strictMath, defaultValue, control);
+    public IntField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, int min, int max, Integer defaultValue, Control control, String suffix) {
+        super(name, group, comments, math, strictMath, defaultValue, control, suffix);
         this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;

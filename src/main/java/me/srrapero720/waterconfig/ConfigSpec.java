@@ -54,7 +54,7 @@ public final class ConfigSpec extends ConfigGroup {
     private static final String COMMENT_PATH_SOFT_FAIL = "Soft fail";
 
     private final IFormatCodec format;
-    private final String suffix;
+    private final String fileSuffix;
     private final Path filePath;
     // TODO: I need to revisit this, the idea was optimize writing just the needed value in the written indexes, but that will cause a lot of headaches
     private final Set<IConfigField<?, ?>> dirtyFields = new LinkedHashSet<>();
@@ -66,10 +66,10 @@ public final class ConfigSpec extends ConfigGroup {
     boolean reload;
     volatile boolean slow;
 
-    private ConfigSpec(String name, IFormatCodec format, String suffix, Path path, int backups) {
+    private ConfigSpec(String name, IFormatCodec format, String fileSuffix, Path path, int backups) {
         super(name, null);
         this.format = format;
-        this.suffix = suffix;
+        this.fileSuffix = fileSuffix;
         this.filePath = path;
         this.backups = backups;
         this.dirty = true;
@@ -99,8 +99,8 @@ public final class ConfigSpec extends ConfigGroup {
         return this.format;
     }
 
-    String suffix() {
-        return this.suffix;
+    String fileSuffix() {
+        return this.fileSuffix;
     }
 
     int backups() {
@@ -498,7 +498,7 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public BaseConfigField<T, S> end() {
             if (field == null) {
-                return new BaseConfigField<>(this.name, this.group, this.comments, this.defaultValue, this.control) {
+                return new BaseConfigField<>(this.name, this.group, this.comments, this.defaultValue, this.control, this.suffix) {
 
                     @Override
                     public void validate() {}
@@ -514,7 +514,7 @@ public final class ConfigSpec extends ConfigGroup {
                     }
                 };
             } else {
-                return new BaseConfigField<>(this.name, this.group, this.comments, this.field, this.context, this.control) {
+                return new BaseConfigField<>(this.name, this.group, this.comments, this.field, this.context, this.control, this.suffix) {
                     @Override
                     public Class<T> type() {
                         return type;
@@ -564,9 +564,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public PathField end() {
             if (this.field == null) {
-                return new PathField(this.name, this.group, this.comments, this.runtimePath, this.fileExists, this.defaultValue, this.control);
+                return new PathField(this.name, this.group, this.comments, this.runtimePath, this.fileExists, this.defaultValue, this.control, this.suffix);
             } else {
-                return new PathField(this.name, this.group, this.comments, this.runtimePath, this.fileExists, this.field, this.context, this.control);
+                return new PathField(this.name, this.group, this.comments, this.runtimePath, this.fileExists, this.field, this.context, this.control, this.suffix);
             }
         }
     }
@@ -635,9 +635,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public ArrayField<S> end() {
             if (this.field == null) {
-                return new ArrayField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.defaultValue, this.subType, this.control);
+                return new ArrayField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.defaultValue, this.subType, this.control, this.suffix);
             } else {
-                return new ArrayField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.field, this.context, this.subType, this.control);
+                return new ArrayField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.field, this.context, this.subType, this.control, this.suffix);
             }
         }
     }
@@ -711,9 +711,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public ListField<S> end() {
             if (this.field == null) {
-                return new ListField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.defaultValue, this.subType, this.control);
+                return new ListField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.defaultValue, this.subType, this.control, this.suffix);
             } else {
-                return new ListField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.field, this.context, this.subType, this.control);
+                return new ListField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.field, this.context, this.subType, this.control, this.suffix);
             }
         }
     }
@@ -735,9 +735,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public EnumField<T> end() {
             if (this.field == null) { // WEAK CHECK
-                return new EnumField<>(this.name, this.group, this.comments, this.defaultValue, this.control);
+                return new EnumField<>(this.name, this.group, this.comments, this.defaultValue, this.control, this.suffix);
             } else {
-                return new EnumField<>(this.name, this.group, this.comments, this.field, this.context, this.control);
+                return new EnumField<>(this.name, this.group, this.comments, this.field, this.context, this.control, this.suffix);
             }
         }
     }
@@ -795,9 +795,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public StringField end() {
             if (this.field == null) {
-                return new StringField(this.name, this.group, this.comments, this.startsWith, this.endsWith, this.allowEmpty, this.condition, this.regexFlags, this.mode, this.defaultValue, this.control);
+                return new StringField(this.name, this.group, this.comments, this.startsWith, this.endsWith, this.allowEmpty, this.condition, this.regexFlags, this.mode, this.defaultValue, this.control, this.suffix);
             } else {
-                return new StringField(this.name, this.group, this.comments, this.startsWith, this.endsWith, this.allowEmpty, this.condition, this.regexFlags, this.mode, this.field, this.context, this.control);
+                return new StringField(this.name, this.group, this.comments, this.startsWith, this.endsWith, this.allowEmpty, this.condition, this.regexFlags, this.mode, this.field, this.context, this.control, this.suffix);
             }
         }
     }
@@ -819,9 +819,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public BooleanField end() {
             if (this.field == null) {
-                return new BooleanField(this.name, this.group, this.comments, this.defaultValue, this.control);
+                return new BooleanField(this.name, this.group, this.comments, this.defaultValue, this.control, this.suffix);
             } else {
-                return new BooleanField(this.name, this.group, this.comments, this.field, this.context, this.control);
+                return new BooleanField(this.name, this.group, this.comments, this.field, this.context, this.control, this.suffix);
             }
         }
     }
@@ -845,9 +845,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public ByteField end() {
             if (this.field == null) {
-                return new ByteField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control);
+                return new ByteField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control, this.suffix);
             } else {
-                return new ByteField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control);
+                return new ByteField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control, this.suffix);
             }
         }
     }
@@ -871,9 +871,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public ShortField end() {
             if (this.field == null) {
-                return new ShortField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control);
+                return new ShortField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control, this.suffix);
             } else {
-                return new ShortField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control);
+                return new ShortField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control, this.suffix);
             }
         }
     }
@@ -895,9 +895,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public CharField end() {
             if (this.field == null) {
-                return new CharField(this.name, this.group, this.comments, this.defaultValue, this.control);
+                return new CharField(this.name, this.group, this.comments, this.defaultValue, this.control, this.suffix);
             } else {
-                return new CharField(this.name, this.group, this.comments, this.field, this.context, this.control);
+                return new CharField(this.name, this.group, this.comments, this.field, this.context, this.control, this.suffix);
             }
         }
     }
@@ -921,9 +921,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public IntField end() {
             if (this.field == null) {
-                return new IntField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control);
+                return new IntField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control, this.suffix);
             } else {
-                return new IntField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control);
+                return new IntField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control, this.suffix);
             }
         }
     }
@@ -947,9 +947,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public LongField end() {
             if (this.field == null) {
-                return new LongField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control);
+                return new LongField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control, this.suffix);
             } else {
-                return new LongField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control);
+                return new LongField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control, this.suffix);
             }
         }
     }
@@ -973,9 +973,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public FloatField end() {
             if (this.field == null) {
-                return new FloatField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control);
+                return new FloatField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control, this.suffix);
             } else {
-                return new FloatField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control);
+                return new FloatField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control, this.suffix);
             }
         }
     }
@@ -999,9 +999,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public DoubleField end() {
             if (this.field == null) {
-                return new DoubleField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control);
+                return new DoubleField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control, this.suffix);
             } else {
-                return new DoubleField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control);
+                return new DoubleField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control, this.suffix);
             }
         }
     }
@@ -1046,6 +1046,7 @@ public final class ConfigSpec extends ConfigGroup {
         protected final ConfigGroup group;
         protected final Set<String> comments = new LinkedHashSet<>();
         protected Control control = Control.DEFAULT;
+        protected String suffix = "";
         protected Field field;
         protected Object context;
 
@@ -1065,6 +1066,15 @@ public final class ConfigSpec extends ConfigGroup {
          */
         public B control(Control control) {
             this.control = (control == null) ? Control.DEFAULT : control;
+            return (B) this;
+        }
+
+        /**
+         * Sets a display suffix (e.g. {@code "MB"}, {@code "SECS"}) forwarded to the field as
+         * informational metadata for external config UIs. Empty string when unset.
+         */
+        public B suffix(String suffix) {
+            this.suffix = (suffix == null) ? "" : suffix;
             return (B) this;
         }
 

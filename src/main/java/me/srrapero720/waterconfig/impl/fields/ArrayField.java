@@ -10,12 +10,12 @@ import java.util.Set;
 import java.util.function.Predicate;
 
 public class ArrayField<T> extends CollectionField<T[], T> {
-    public ArrayField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<T>> filter, Field field, Object context, Class<T> subType, Control control) {
-        super(name, group, comments, stringify, singleline, allowEmpty, unique, limit, filter, field, context, subType, control);
+    public ArrayField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<T>> filter, Field field, Object context, Class<T> subType, Control control, String suffix) {
+        super(name, group, comments, stringify, singleline, allowEmpty, unique, limit, filter, field, context, subType, control, suffix);
     }
 
-    public ArrayField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<T>> filter, T[] defaultValue, Class<T> subType, Control control) {
-        super(name, group, comments, stringify, singleline, allowEmpty, unique, limit, filter, defaultValue, subType, control);
+    public ArrayField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<T>> filter, T[] defaultValue, Class<T> subType, Control control, String suffix) {
+        super(name, group, comments, stringify, singleline, allowEmpty, unique, limit, filter, defaultValue, subType, control, suffix);
     }
 
     @Override

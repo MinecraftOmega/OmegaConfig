@@ -122,6 +122,11 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
         return Control.FOLDER;
     }
 
+    @Override
+    public String suffix() {
+        return "";
+    }
+
     public <T extends IConfigField<?, ?>> void append(T field) {
         this.fields.add(field);
     }

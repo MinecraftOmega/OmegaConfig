@@ -17,8 +17,8 @@ public abstract class CollectionField<T, S> extends BaseConfigField<T, S> {
     public final Class<? extends Predicate<S>> filter;
     public final Class<S> subType;
 
-    protected CollectionField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<S>> filter, Field field, Object context, Class<S> subType, Control control) {
-        super(name, group, comments, field, context, coherent(name, control));
+    protected CollectionField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<S>> filter, Field field, Object context, Class<S> subType, Control control, String suffix) {
+        super(name, group, comments, field, context, coherent(name, control), suffix);
         this.stringify = stringify;
         this.singleline = singleline;
         this.allowEmpty = allowEmpty;
@@ -28,8 +28,8 @@ public abstract class CollectionField<T, S> extends BaseConfigField<T, S> {
         this.subType = subType;
     }
 
-    protected CollectionField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<S>> filter, T defaultValue, Class<S> subType, Control control) {
-        super(name, group, comments, defaultValue, coherent(name, control));
+    protected CollectionField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<S>> filter, T defaultValue, Class<S> subType, Control control, String suffix) {
+        super(name, group, comments, defaultValue, coherent(name, control), suffix);
         this.stringify = stringify;
         this.singleline = singleline;
         this.allowEmpty = allowEmpty;

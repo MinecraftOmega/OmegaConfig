@@ -10,12 +10,12 @@ public final class CharField extends BaseConfigField<Character, Void> {
 
     private char primitive;
 
-    public CharField(String name, ConfigGroup group, Set<String> comments, Field field, Object context, Control control) {
-        super(name, group, comments, field, context, control);
+    public CharField(String name, ConfigGroup group, Set<String> comments, Field field, Object context, Control control, String suffix) {
+        super(name, group, comments, field, context, control, suffix);
     }
 
-    public CharField(String name, ConfigGroup group, Set<String> comments, Character defaultValue, Control control) {
-        super(name, group, comments, defaultValue, control);
+    public CharField(String name, ConfigGroup group, Set<String> comments, Character defaultValue, Control control, String suffix) {
+        super(name, group, comments, defaultValue, control, suffix);
     }
 
     @Override

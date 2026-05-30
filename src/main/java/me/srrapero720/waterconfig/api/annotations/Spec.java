@@ -91,6 +91,14 @@ public @interface Spec {
         String value() default "";
 
         /**
+         * Suffix appended into config displayers, its a helper for any universal config manager screen  to display an appropiate
+         * repreentation of what kind of value is the config.
+         *
+         * @return value suffix
+         */
+        String suffix() default "";
+
+        /**
          * Conrtrol helper, it states what is the recommended control for this setting
          * @return the specified control type, DEFAULT when empty
          * @throws IllegalArgumentException when the control is incoherent with the field type (e.g. checkbox for an int range)

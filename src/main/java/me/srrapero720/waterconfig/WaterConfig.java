@@ -270,6 +270,9 @@ public class WaterConfig {
             // CONTROL — FALLS BACK TO THE FIELD TYPE DEFAULT WHEN NOT CHOSEN
             fieldBuilder.control(specField.control());
 
+            // SUFFIX — DISPLAY-ONLY HINT FOR EXTERNAL CONFIG UIS
+            fieldBuilder.suffix(specField.suffix());
+
             // COMMENTS
             for (Comment comment: field.getAnnotationsByType(Comment.class)) {
                 fieldBuilder.comments(comment.value());
