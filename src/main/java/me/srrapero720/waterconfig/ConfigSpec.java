@@ -1,5 +1,6 @@
 package me.srrapero720.waterconfig;
 
+import me.srrapero720.waterconfig.api.Control;
 import me.srrapero720.waterconfig.api.IConfigField;
 import me.srrapero720.waterconfig.api.formats.IFormatCodec;
 import me.srrapero720.waterconfig.api.formats.IFormatReader;
@@ -497,7 +498,7 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public BaseConfigField<T, S> end() {
             if (field == null) {
-                return new BaseConfigField<>(this.name, this.group, this.comments, this.defaultValue) {
+                return new BaseConfigField<>(this.name, this.group, this.comments, this.defaultValue, this.control) {
 
                     @Override
                     public void validate() {}
@@ -513,7 +514,7 @@ public final class ConfigSpec extends ConfigGroup {
                     }
                 };
             } else {
-                return new BaseConfigField<>(this.name, this.group, this.comments, this.field, this.context) {
+                return new BaseConfigField<>(this.name, this.group, this.comments, this.field, this.context, this.control) {
                     @Override
                     public Class<T> type() {
                         return type;
@@ -563,9 +564,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public PathField end() {
             if (this.field == null) {
-                return new PathField(this.name, this.group, this.comments, this.runtimePath, this.fileExists, this.defaultValue);
+                return new PathField(this.name, this.group, this.comments, this.runtimePath, this.fileExists, this.defaultValue, this.control);
             } else {
-                return new PathField(this.name, this.group, this.comments, this.runtimePath, this.fileExists, this.field, this.context);
+                return new PathField(this.name, this.group, this.comments, this.runtimePath, this.fileExists, this.field, this.context, this.control);
             }
         }
     }
@@ -634,9 +635,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public ArrayField<S> end() {
             if (this.field == null) {
-                return new ArrayField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.defaultValue, this.subType);
+                return new ArrayField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.defaultValue, this.subType, this.control);
             } else {
-                return new ArrayField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.field, this.context, this.subType);
+                return new ArrayField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.field, this.context, this.subType, this.control);
             }
         }
     }
@@ -710,9 +711,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public ListField<S> end() {
             if (this.field == null) {
-                return new ListField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.defaultValue, this.subType);
+                return new ListField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.defaultValue, this.subType, this.control);
             } else {
-                return new ListField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.field, this.context, this.subType);
+                return new ListField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.field, this.context, this.subType, this.control);
             }
         }
     }
@@ -734,9 +735,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public EnumField<T> end() {
             if (this.field == null) { // WEAK CHECK
-                return new EnumField<>(this.name, this.group, this.comments, this.defaultValue);
+                return new EnumField<>(this.name, this.group, this.comments, this.defaultValue, this.control);
             } else {
-                return new EnumField<>(this.name, this.group, this.comments, this.field, this.context);
+                return new EnumField<>(this.name, this.group, this.comments, this.field, this.context, this.control);
             }
         }
     }
@@ -794,9 +795,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public StringField end() {
             if (this.field == null) {
-                return new StringField(this.name, this.group, this.comments, this.startsWith, this.endsWith, this.allowEmpty, this.condition, this.regexFlags, this.mode, this.defaultValue);
+                return new StringField(this.name, this.group, this.comments, this.startsWith, this.endsWith, this.allowEmpty, this.condition, this.regexFlags, this.mode, this.defaultValue, this.control);
             } else {
-                return new StringField(this.name, this.group, this.comments, this.startsWith, this.endsWith, this.allowEmpty, this.condition, this.regexFlags, this.mode, this.field, this.context);
+                return new StringField(this.name, this.group, this.comments, this.startsWith, this.endsWith, this.allowEmpty, this.condition, this.regexFlags, this.mode, this.field, this.context, this.control);
             }
         }
     }
@@ -818,9 +819,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public BooleanField end() {
             if (this.field == null) {
-                return new BooleanField(this.name, this.group, this.comments, this.defaultValue);
+                return new BooleanField(this.name, this.group, this.comments, this.defaultValue, this.control);
             } else {
-                return new BooleanField(this.name, this.group, this.comments, this.field, this.context);
+                return new BooleanField(this.name, this.group, this.comments, this.field, this.context, this.control);
             }
         }
     }
@@ -844,9 +845,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public ByteField end() {
             if (this.field == null) {
-                return new ByteField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+                return new ByteField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control);
             } else {
-                return new ByteField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context);
+                return new ByteField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control);
             }
         }
     }
@@ -870,9 +871,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public ShortField end() {
             if (this.field == null) {
-                return new ShortField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+                return new ShortField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control);
             } else {
-                return new ShortField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context);
+                return new ShortField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control);
             }
         }
     }
@@ -894,9 +895,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public CharField end() {
             if (this.field == null) {
-                return new CharField(this.name, this.group, this.comments, this.defaultValue);
+                return new CharField(this.name, this.group, this.comments, this.defaultValue, this.control);
             } else {
-                return new CharField(this.name, this.group, this.comments, this.field, this.context);
+                return new CharField(this.name, this.group, this.comments, this.field, this.context, this.control);
             }
         }
     }
@@ -920,9 +921,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public IntField end() {
             if (this.field == null) {
-                return new IntField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+                return new IntField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control);
             } else {
-                return new IntField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context);
+                return new IntField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control);
             }
         }
     }
@@ -946,9 +947,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public LongField end() {
             if (this.field == null) {
-                return new LongField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+                return new LongField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control);
             } else {
-                return new LongField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context);
+                return new LongField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control);
             }
         }
     }
@@ -972,9 +973,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public FloatField end() {
             if (this.field == null) {
-                return new FloatField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+                return new FloatField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control);
             } else {
-                return new FloatField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context);
+                return new FloatField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control);
             }
         }
     }
@@ -998,9 +999,9 @@ public final class ConfigSpec extends ConfigGroup {
         @Override
         public DoubleField end() {
             if (this.field == null) {
-                return new DoubleField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue);
+                return new DoubleField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control);
             } else {
-                return new DoubleField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context);
+                return new DoubleField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.field, this.context, this.control);
             }
         }
     }
@@ -1038,15 +1039,13 @@ public final class ConfigSpec extends ConfigGroup {
             this.math = math;
             return (B) this;
         }
-
-        @Override
-        public abstract F end();
     }
 
     public static abstract sealed class BaseFieldBuilder<B extends BaseFieldBuilder<B, ?>, F extends IConfigField<?, ?>> {
         protected final String name;
         protected final ConfigGroup group;
         protected final Set<String> comments = new LinkedHashSet<>();
+        protected Control control = Control.DEFAULT;
         protected Field field;
         protected Object context;
 
@@ -1057,6 +1056,15 @@ public final class ConfigSpec extends ConfigGroup {
 
         public B comments(String... comments) {
             this.comments.addAll(Arrays.asList(comments));
+            return (B) this;
+        }
+
+        /**
+         * Sets the preferred UI control for this field. When left as {@link Control#DEFAULT},
+         * the field keeps the control its type prefers.
+         */
+        public B control(Control control) {
+            this.control = (control == null) ? Control.DEFAULT : control;
             return (B) this;
         }
 

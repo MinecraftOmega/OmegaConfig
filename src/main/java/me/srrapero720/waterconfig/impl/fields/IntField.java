@@ -1,6 +1,7 @@
 package me.srrapero720.waterconfig.impl.fields;
 
 import me.srrapero720.waterconfig.ConfigGroup;
+import me.srrapero720.waterconfig.api.Control;
 
 import java.lang.reflect.Field;
 import java.util.Set;
@@ -11,15 +12,15 @@ public final class IntField extends BaseNumberField<Integer> implements IntSuppl
     public final int max;
     private int primitive;
 
-    public IntField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, int min, int max, Field field, Object context) {
-        super(name, group, comments, math, strictMath, field, context);
+    public IntField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, int min, int max, Field field, Object context, Control control) {
+        super(name, group, comments, math, strictMath, field, context, control);
         this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
     }
 
-    public IntField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, int min, int max, Integer defaultValue) {
-        super(name, group, comments, math, strictMath, defaultValue);
+    public IntField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, int min, int max, Integer defaultValue, Control control) {
+        super(name, group, comments, math, strictMath, defaultValue, control);
         this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;

@@ -1,6 +1,7 @@
 package me.srrapero720.waterconfig.api.annotations;
 
 import me.srrapero720.waterconfig.WaterConfig;
+import me.srrapero720.waterconfig.api.Control;
 
 import java.lang.annotation.*;
 
@@ -88,5 +89,12 @@ public @interface Spec {
          * @return config container id, empty by default
          */
         String value() default "";
+
+        /**
+         * Conrtrol helper, it states what is the recommended control for this setting
+         * @return the specified control type, DEFAULT when empty
+         * @throws IllegalArgumentException when the control is incoherent with the field type (e.g. checkbox for an int range)
+         */
+        Control control() default Control.DEFAULT;
     }
 }

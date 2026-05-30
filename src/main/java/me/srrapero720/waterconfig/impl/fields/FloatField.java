@@ -1,6 +1,7 @@
 package me.srrapero720.waterconfig.impl.fields;
 
 import me.srrapero720.waterconfig.ConfigGroup;
+import me.srrapero720.waterconfig.api.Control;
 
 import java.lang.reflect.Field;
 import java.util.Set;
@@ -11,15 +12,15 @@ public final class FloatField extends BaseNumberField<Float> implements DoubleSu
     public final float max;
     private float primitive;
 
-    public FloatField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, float min, float max, Field field, Object context) {
-        super(name, group, comments, math, strictMath, field, context);
+    public FloatField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, float min, float max, Field field, Object context, Control control) {
+        super(name, group, comments, math, strictMath, field, context, control);
         this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
     }
 
-    public FloatField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, float min, float max, Float defaultValue) {
-        super(name, group, comments, math, strictMath, defaultValue);
+    public FloatField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, float min, float max, Float defaultValue, Control control) {
+        super(name, group, comments, math, strictMath, defaultValue, control);
         this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;

@@ -68,6 +68,14 @@ public interface IConfigField<T, S> extends Consumer<T>, Supplier<T> {
     String[] comments();
 
     /**
+     * Provides the resolved UI control that represents this field's value.
+     *
+     * <p>A field always reports a concrete control, never {@link Control#DEFAULT}: when none was
+     * explicitly chosen it reports the control its type prefers.</p>
+     */
+    Control control();
+
+    /**
      * Sets config to default value
      */
     void reset();

@@ -1,5 +1,6 @@
 package me.srrapero720.waterconfig;
 
+import me.srrapero720.waterconfig.api.Control;
 import me.srrapero720.waterconfig.api.IConfigField;
 
 import java.util.Collection;
@@ -114,6 +115,11 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
     public String[] comments() {
         // TODO: new array or the full collection
         return comments.toArray(new String[0]);
+    }
+
+    @Override
+    public Control control() {
+        return Control.FOLDER;
     }
 
     public <T extends IConfigField<?, ?>> void append(T field) {

@@ -1,6 +1,7 @@
 package me.srrapero720.waterconfig.impl.fields;
 
 import me.srrapero720.waterconfig.ConfigGroup;
+import me.srrapero720.waterconfig.api.Control;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -11,12 +12,12 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public final class ListField<T> extends CollectionField<List<T>, T> {
-    public ListField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<T>> filter, Field field, Object context, Class<T> subType) {
-        super(name, group, comments, stringify, singleline, allowEmpty, unique, limit, filter, field, context, subType);
+    public ListField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<T>> filter, Field field, Object context, Class<T> subType, Control control) {
+        super(name, group, comments, stringify, singleline, allowEmpty, unique, limit, filter, field, context, subType, control);
     }
 
-    public ListField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<T>> filter, List<T> defaultValue, Class<T> subType) {
-        super(name, group, comments, stringify, singleline, allowEmpty, unique, limit, filter, defaultValue, subType);
+    public ListField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<T>> filter, List<T> defaultValue, Class<T> subType, Control control) {
+        super(name, group, comments, stringify, singleline, allowEmpty, unique, limit, filter, defaultValue, subType, control);
     }
 
     @Override

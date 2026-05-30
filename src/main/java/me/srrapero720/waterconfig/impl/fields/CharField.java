@@ -1,6 +1,7 @@
 package me.srrapero720.waterconfig.impl.fields;
 
 import me.srrapero720.waterconfig.ConfigGroup;
+import me.srrapero720.waterconfig.api.Control;
 
 import java.lang.reflect.Field;
 import java.util.Set;
@@ -9,12 +10,12 @@ public final class CharField extends BaseConfigField<Character, Void> {
 
     private char primitive;
 
-    public CharField(String name, ConfigGroup group, Set<String> comments, Field field, Object context) {
-        super(name, group, comments, field, context);
+    public CharField(String name, ConfigGroup group, Set<String> comments, Field field, Object context, Control control) {
+        super(name, group, comments, field, context, control);
     }
 
-    public CharField(String name, ConfigGroup group, Set<String> comments, Character defaultValue) {
-        super(name, group, comments, defaultValue);
+    public CharField(String name, ConfigGroup group, Set<String> comments, Character defaultValue, Control control) {
+        super(name, group, comments, defaultValue, control);
     }
 
     @Override

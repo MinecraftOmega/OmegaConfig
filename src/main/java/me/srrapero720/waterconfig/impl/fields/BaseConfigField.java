@@ -3,6 +3,7 @@ package me.srrapero720.waterconfig.impl.fields;
 import me.srrapero720.waterconfig.ConfigGroup;
 import me.srrapero720.waterconfig.ConfigSpec;
 import me.srrapero720.waterconfig.Tools;
+import me.srrapero720.waterconfig.api.Control;
 import me.srrapero720.waterconfig.api.IConfigField;
 
 import java.lang.reflect.Field;
@@ -14,6 +15,7 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
     private final ConfigGroup group;
     private final Mode mode;
     private final Set<String> comments;
+    private final Control control;
     public final T defaultValue;
 
     // FIELD
@@ -21,7 +23,7 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
     private final Field field;
     private T value;
 
-    protected BaseConfigField(String name, ConfigGroup group, Set<String> comments, Field field, Object context) {
+    protected BaseConfigField(String name, ConfigGroup group, Set<String> comments, Field field, Object context, Control control) {
         this.name = name;
         this.group = group;
         this.comments = comments;
@@ -29,10 +31,11 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
         this.mode = Mode.REFLECT;
         this.field = field;
         this.context = context;
+        this.control = (control == null || control == Control.DEFAULT) ? Control.INPUT : control;
         this.group.append(this);
     }
 
-    protected BaseConfigField(String name, ConfigGroup group, Set<String> comments, T defaultValue) {
+    protected BaseConfigField(String name, ConfigGroup group, Set<String> comments, T defaultValue, Control control) {
         this.name = name;
         this.group = group;
         this.comments = comments;
@@ -40,6 +43,7 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
         this.mode = Mode.NATIVE;
         this.field = null;
         this.context = null;
+        this.control = (control == null || control == Control.DEFAULT) ? Control.INPUT : control;
         this.group.append(this);
     }
 
@@ -66,6 +70,16 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
     @Override
     public String[] comments() {
         return comments.toArray(new String[0]);
+    }
+
+    @Override
+    public Control control() {
+        return this.control;
+    }
+
+    // BUILDS THE EXCEPTION THROWN BY SUBCLASSES WHEN A CONTROL DOES NOT FIT THE FIELD
+    protected static IllegalArgumentException incoherentControl(String name, Control control) {
+        return new IllegalArgumentException("Control '" + control + "' is not coherent for field '" + name + "'");
     }
 
     @Override

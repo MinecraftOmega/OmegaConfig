@@ -23,6 +23,7 @@ import static me.srrapero720.waterconfig.Tools.toBoxed;
 public class WaterConfig {
     public static final String ID = "waterconfig";
 
+
     // ══════════════════════════════════════════════════════════
     //  THREADING
     // ══════════════════════════════════════════════════════════
@@ -265,6 +266,9 @@ public class WaterConfig {
                 continue; // SKIP END CALL BELOW
             }
             else fieldBuilder = builder.define(name, field, instance);
+
+            // CONTROL — FALLS BACK TO THE FIELD TYPE DEFAULT WHEN NOT CHOSEN
+            fieldBuilder.control(specField.control());
 
             // COMMENTS
             for (Comment comment: field.getAnnotationsByType(Comment.class)) {

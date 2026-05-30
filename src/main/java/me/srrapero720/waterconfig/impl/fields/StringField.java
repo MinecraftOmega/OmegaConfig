@@ -1,6 +1,7 @@
 package me.srrapero720.waterconfig.impl.fields;
 
 import me.srrapero720.waterconfig.ConfigGroup;
+import me.srrapero720.waterconfig.api.Control;
 
 import java.lang.reflect.Field;
 import java.util.Map;
@@ -19,8 +20,8 @@ public final class StringField extends BaseConfigField<String, Void> {
     public final Mode mode;
     private final Pattern compiledPattern;
 
-    public StringField(String name, ConfigGroup group, Set<String> comments, String startsWith, String endsWith, boolean allowEmpty, String condition, int regexFlags, Mode mode, Field field, Object context) {
-        super(name, group, comments, field, context);
+    public StringField(String name, ConfigGroup group, Set<String> comments, String startsWith, String endsWith, boolean allowEmpty, String condition, int regexFlags, Mode mode, Field field, Object context, Control control) {
+        super(name, group, comments, field, context, control);
         this.startsWith = startsWith;
         this.endsWith = endsWith;
         this.allowEmpty = allowEmpty;
@@ -30,8 +31,8 @@ public final class StringField extends BaseConfigField<String, Void> {
         this.compiledPattern = compilePattern(condition, regexFlags, mode);
     }
 
-    public StringField(String name, ConfigGroup group, Set<String> comments, String startsWith, String endsWith, boolean allowEmpty, String condition, int regexFlags, Mode mode, String defaultValue) {
-        super(name, group, comments, defaultValue);
+    public StringField(String name, ConfigGroup group, Set<String> comments, String startsWith, String endsWith, boolean allowEmpty, String condition, int regexFlags, Mode mode, String defaultValue, Control control) {
+        super(name, group, comments, defaultValue, control);
         this.startsWith = startsWith;
         this.endsWith = endsWith;
         this.allowEmpty = allowEmpty;

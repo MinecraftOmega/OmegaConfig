@@ -1,6 +1,7 @@
 package me.srrapero720.waterconfig.impl.fields;
 
 import me.srrapero720.waterconfig.ConfigGroup;
+import me.srrapero720.waterconfig.api.Control;
 
 import java.lang.reflect.Field;
 import java.util.Set;
@@ -16,8 +17,8 @@ public abstract class CollectionField<T, S> extends BaseConfigField<T, S> {
     public final Class<? extends Predicate<S>> filter;
     public final Class<S> subType;
 
-    protected CollectionField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<S>> filter, Field field, Object context, Class<S> subType) {
-        super(name, group, comments, field, context);
+    protected CollectionField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<S>> filter, Field field, Object context, Class<S> subType, Control control) {
+        super(name, group, comments, field, context, coherent(name, control));
         this.stringify = stringify;
         this.singleline = singleline;
         this.allowEmpty = allowEmpty;
@@ -27,8 +28,8 @@ public abstract class CollectionField<T, S> extends BaseConfigField<T, S> {
         this.subType = subType;
     }
 
-    protected CollectionField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<S>> filter, T defaultValue, Class<S> subType) {
-        super(name, group, comments, defaultValue);
+    protected CollectionField(String name, ConfigGroup group, Set<String> comments, boolean stringify, boolean singleline, boolean allowEmpty, boolean unique, int limit, Class<? extends Predicate<S>> filter, T defaultValue, Class<S> subType, Control control) {
+        super(name, group, comments, defaultValue, coherent(name, control));
         this.stringify = stringify;
         this.singleline = singleline;
         this.allowEmpty = allowEmpty;
@@ -36,6 +37,15 @@ public abstract class CollectionField<T, S> extends BaseConfigField<T, S> {
         this.limit = limit;
         this.filter = filter;
         this.subType = subType;
+    }
+
+    private static Control coherent(String name, Control control) {
+        return switch (control) {
+            case DEFAULT, LIST_EDITOR -> Control.LIST_EDITOR;
+            case TAG_INPUT -> Control.TAG_INPUT;
+            case CHECKBOX_LIST -> Control.CHECKBOX_LIST;
+            default -> throw incoherentControl(name, control);
+        };
     }
 
     @Override
