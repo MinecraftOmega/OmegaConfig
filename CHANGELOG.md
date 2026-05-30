@@ -1,3 +1,7 @@
+# VERSION 0.7.0.beta
+- Added Controls enum with a bunch of UI control type (UI helper)
+- Added Suffix parameter (UI helper)
+
 # VERSION 0.6.4.beta
 - TOML: make root push transparent to avoid creating a redundant root table
 
