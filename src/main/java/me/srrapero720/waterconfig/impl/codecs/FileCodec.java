@@ -12,7 +12,11 @@ public class FileCodec implements ICodec<File> {
 
     @Override
     public File decode(String value) {
-        return new File("/").toPath().resolve(value).toFile().getAbsoluteFile();
+        try {
+            return new File("/").toPath().resolve(value).toFile().getAbsoluteFile();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
 

@@ -12,7 +12,11 @@ public class UUIDCodec implements ICodec<UUID> {
 
     @Override
     public UUID decode(String value) {
-        return UUID.fromString(value);
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     @Override

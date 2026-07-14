@@ -10,10 +10,16 @@ public class IntCodec implements ICodec<Integer> {
 
     @Override
     public Integer decode(String value) {
+        value = value.trim(); // QUOTED NUMBERS WITH ACCIDENTAL WHITESPACE ARE A COMMON USER ERROR
         try {
             return Integer.valueOf(value);
         } catch (NumberFormatException e) {
-            return null;
+            // JSON5-STYLE HEX LITERALS (0xFF, -0x1A)
+            try {
+                return Integer.decode(value);
+            } catch (NumberFormatException e2) {
+                return null;
+            }
         }
     }
 

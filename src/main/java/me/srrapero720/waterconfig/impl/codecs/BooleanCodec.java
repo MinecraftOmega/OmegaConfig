@@ -10,7 +10,12 @@ public class BooleanCodec implements ICodec<Boolean> {
 
     @Override
     public Boolean decode(String value) {
-        return Boolean.parseBoolean(value);
+        // STRICT true/false (CASE-INSENSITIVE, TRIMMED): ANYTHING ELSE IS AN UNEXPECTED
+        // TYPE AND MUST RESET TO DEFAULT INSTEAD OF SILENTLY BECOMING false
+        String v = value.trim();
+        if (v.equalsIgnoreCase("true")) return Boolean.TRUE;
+        if (v.equalsIgnoreCase("false")) return Boolean.FALSE;
+        return null;
     }
 
     @Override
