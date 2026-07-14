@@ -37,7 +37,7 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
         String path = specSeparator != -1 ? id.substring(specSeparator + 1) : id;
 
         // CHECK IF THE ID ITS OF ANOTHER SPEC (GO TO HELL)
-        if (specId != null && !specId.equals(this.spec().id())) {
+        if (specId != null && !specId.equals(this.spec().name())) {
             return null;
         }
 
@@ -111,10 +111,15 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
         throw new UnsupportedOperationException("Groups cannot handle subTypes");
     }
 
+    private String[] commentsArray;
+
     @Override
     public String[] comments() {
-        // TODO: new array or the full collection
-        return comments.toArray(new String[0]);
+        // COMMENTS ARE FIXED AFTER BUILD: CACHE THE ARRAY INSTEAD OF COPYING PER SAVE
+        if (this.commentsArray == null) {
+            this.commentsArray = this.comments.toArray(new String[0]);
+        }
+        return this.commentsArray;
     }
 
     @Override
@@ -128,6 +133,12 @@ public sealed class ConfigGroup implements IConfigField<Void, Void> permits Conf
     }
 
     public <T extends IConfigField<?, ?>> void append(T field) {
+        // FIELD AND GROUP NAMES MUST BE UNIQUE WITHIN THEIR GROUP
+        for (IConfigField<?, ?> f: this.fields) {
+            if (f.name().equals(field.name())) {
+                throw new IllegalArgumentException("Duplicate field name '" + field.name() + "' in group '" + this.name + "'");
+            }
+        }
         this.fields.add(field);
     }
 

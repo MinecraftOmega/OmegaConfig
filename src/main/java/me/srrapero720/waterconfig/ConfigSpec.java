@@ -2,15 +2,21 @@ package me.srrapero720.waterconfig;
 
 import me.srrapero720.waterconfig.api.Control;
 import me.srrapero720.waterconfig.api.IConfigField;
+import me.srrapero720.waterconfig.api.IStructuredField;
 import me.srrapero720.waterconfig.api.formats.IFormatCodec;
 import me.srrapero720.waterconfig.api.formats.IFormatReader;
 import me.srrapero720.waterconfig.api.formats.IFormatWriter;
+import me.srrapero720.waterconfig.api.annotations.ColorConditions;
 import me.srrapero720.waterconfig.impl.fields.*;
 import me.srrapero720.waterconfig.impl.formats.special.MathEvaluator;
 
+import java.awt.Color;
+
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.function.Predicate;
 
@@ -56,15 +62,14 @@ public final class ConfigSpec extends ConfigGroup {
     private final IFormatCodec format;
     private final String fileSuffix;
     private final Path filePath;
-    // TODO: I need to revisit this, the idea was optimize writing just the needed value in the written indexes, but that will cause a lot of headaches
-    private final Set<IConfigField<?, ?>> dirtyFields = new LinkedHashSet<>();
     private final int backups;
-    // Not volatile by design: delayed cross-thread visibility is acceptable for a config library.
-    // The worker thread polls on a time gap, so a few milliseconds of staleness is meaningless.
-    boolean dirty;
-    boolean loaded;
-    boolean reload;
+    // GUARDS FILE IO AND THE {dirty, reload, dirtyFields} TRANSITIONS AGAINST CONCURRENT SAVES/LOADS
+    final Object ioLock = new Object();
+    volatile boolean dirty;
+    volatile boolean reload;
     volatile boolean slow;
+    volatile Status status = Status.UNLOADED;
+    volatile Throwable loadError;
 
     private ConfigSpec(String name, IFormatCodec format, String fileSuffix, Path path, int backups) {
         super(name, null);
@@ -75,20 +80,27 @@ public final class ConfigSpec extends ConfigGroup {
         this.dirty = true;
     }
 
+    /**
+     * Lifecycle of a spec registration. Terminal states are {@link #LOADED} and {@link #FAILED}.
+     */
+    public enum Status {
+        UNLOADED, LOADING, LOADED, FAILED
+    }
+
     @Override
     public String id() {
         return this.name() + ":";
     }
 
+    @Override
+    public ConfigSpec spec() {
+        return this;
+    }
+
     public void markDirty(IConfigField<?, ?> field) {
         if (field.spec() != this)
             throw new IllegalArgumentException("ConfigField requires to be updated by the intended spec");
-        this.dirtyFields.add(field);
         this.dirty = true;
-    }
-
-    Set<IConfigField<?, ?>> dirtyFields() {
-        return this.dirtyFields;
     }
 
     public Path path() {
@@ -112,7 +124,18 @@ public final class ConfigSpec extends ConfigGroup {
     }
 
     public boolean isLoaded() {
-        return this.loaded;
+        return this.status == Status.LOADED;
+    }
+
+    public Status status() {
+        return this.status;
+    }
+
+    /**
+     * The failure that moved this spec into {@link Status#FAILED}, null otherwise.
+     */
+    public Throwable loadError() {
+        return this.loadError;
     }
 
     public boolean isReload() {
@@ -120,11 +143,34 @@ public final class ConfigSpec extends ConfigGroup {
     }
 
     public void setReload(boolean reload) {
+        // SOFT LOCKDOWN: EXTERNAL RELOADS ARE DISABLED, SO HOT-EDITS NEVER TAKE EFFECT
+        if (reload && WaterConfig.isLockdown()) {
+            return;
+        }
         this.reload = reload;
     }
 
     public void setDirty(boolean dirty) {
         this.dirty = dirty;
+    }
+
+    /**
+     * Re-validates every field from the base, resetting any that no longer meet their conditions.
+     * Intended for a config manager to refresh a spec after external (reflect-mode) field mutations,
+     * which the spec is otherwise unaware of.
+     */
+    public void refresh() {
+        this.refresh(this);
+    }
+
+    private void refresh(ConfigGroup group) {
+        for (IConfigField<?, ?> field: group.getFields()) {
+            if (field instanceof ConfigGroup g) {
+                this.refresh(g);
+            } else {
+                field.validate();
+            }
+        }
     }
 
     boolean isSlow() {
@@ -137,15 +183,45 @@ public final class ConfigSpec extends ConfigGroup {
 
     // TODO: must return a boolean or just throw instead?
     boolean load() throws IOException {
-        if (!this.filePath.toFile().exists()) {
-            return false;
+        synchronized (this.ioLock) {
+            if (!this.filePath.toFile().exists()) {
+                return false;
+            }
+            // REPAIR MODE: THE SPEC VALIDATES EVERY RECOVERED VALUE, SO FORMAT ERRORS
+            // BECOME LOGGED RESYNC POINTS INSTEAD OF ABORTING THE WHOLE LOAD
+            try (IFormatReader reader = this.format.createReader(this.filePath, IFormatCodec.ParseMode.REPAIR)) {
+                this.load(this, reader);
+
+                // UNKNOWN FILE KEYS (ALIASES INCLUDED) JOIN THE READER'S RECOVERY REPORT
+                Set<String> known = new HashSet<>();
+                this.collectKeys(this, "", known);
+                for (String key : reader.entries().keySet()) {
+                    if (!known.contains(key)) {
+                        reader.report().add(new IFormatCodec.RepairEntry(0, "unknown key '" + key + "'", "ignored"));
+                    }
+                }
+                for (IFormatCodec.RepairEntry entry : reader.report()) {
+                    System.err.println("[WaterConfig] Recovered while loading '" + this.name() + "': " + entry);
+                }
+            }
+            this.reload = false;
+            this.status = Status.LOADED;
+            return true;
         }
-        try (IFormatReader reader = this.format.createReader(this.filePath)) {
-            this.load(this, reader);
+    }
+
+    // COLLECTS EVERY DOTTED KEY THE SPEC UNDERSTANDS, ALIASES INCLUDED
+    private void collectKeys(ConfigGroup group, String prefix, Set<String> known) {
+        for (IConfigField<?, ?> field: group.getFields()) {
+            if (field instanceof ConfigGroup g) {
+                this.collectKeys(g, prefix + g.name() + ".", known);
+                continue;
+            }
+            known.add(prefix + field.name());
+            for (String alias : field.aliases()) {
+                known.add(prefix + alias);
+            }
         }
-        this.loaded = true;
-        this.reload = false;
-        return true;
     }
 
     private void load(ConfigGroup group, IFormatReader reader) {
@@ -157,41 +233,127 @@ public final class ConfigSpec extends ConfigGroup {
                 continue;
             }
 
+            if (field instanceof IStructuredField sf) {
+                // SELF-SERIALIZING FIELD (E.G. COLOR AS A GROUP): DELEGATE WITH PER-FIELD ISOLATION
+                try {
+                    sf.readSelf(reader);
+                } catch (Exception e) {
+                    System.err.println("[WaterConfig] Invalid value for field '" + field.id() + "', reset to default: " + e.getMessage());
+                    field.reset();
+                }
+                continue;
+            }
+
             if (field instanceof CollectionField<?,?> collectionField) {
-                String[] values = reader.readArray(field.name());
-                if (values != null) {
-                    Object[] parsedValues = WaterConfig.tryParse(values, field.type(), field.subType());
-                    if (parsedValues != null && Tools.requireNotNull(parsedValues)) {
-                        collectionField.setArray(parsedValues);
+                // PER-FIELD ISOLATION: ONE BAD VALUE RESETS THAT FIELD, NEVER ABORTS THE WHOLE LOAD
+                try {
+                    String[] values = reader.readArray(field.name());
+                    // RENAMED FIELDS PICK UP VALUES FROM THEIR FORMER NAMES
+                    for (int a = 0; values == null && a < field.aliases().length; a++) {
+                        values = reader.readArray(field.aliases()[a]);
                     }
+                    if (values == null && collectionField.stringify) {
+                        // STRINGIFY SUGAR: THE COLLECTION WAS SAVED AS ONE COMMA-SEPARATED STRING
+                        String raw = reader.read(field.name());
+                        for (int a = 0; raw == null && a < field.aliases().length; a++) {
+                            raw = reader.read(field.aliases()[a]);
+                        }
+                        if (raw != null) {
+                            if (raw.isBlank()) {
+                                values = new String[0];
+                            } else {
+                                values = raw.split(",");
+                                for (int i = 0; i < values.length; i++) {
+                                    values[i] = values[i].trim();
+                                }
+                            }
+                        }
+                    }
+                    if (values != null) {
+                        // PER-ELEMENT TOLERANCE: KEEP EVERY DECODABLE ELEMENT (REPAIR-COERCED WHEN THE
+                        // CODEC FAILS), DROP THE REST, SO ONE BAD ENTRY NEVER DISCARDS THE WHOLE ARRAY
+                        List<Object> kept = new ArrayList<>(values.length);
+                        for (String raw : values) {
+                            Object element = WaterConfig.parseElement(raw, collectionField.subType());
+                            if (element != null) {
+                                kept.add(element);
+                            } else {
+                                reader.report().add(new IFormatCodec.RepairEntry(0, "list element '" + raw + "' in '" + field.id() + "' is not a valid " + collectionField.subType().getSimpleName(), "dropped"));
+                            }
+                        }
+                        collectionField.setArray(kept.toArray());
+                        collectionField.validate();
+                    }
+                } catch (Exception e) {
+                    System.err.println("[WaterConfig] Invalid value for field '" + field.id() + "', reset to default: " + e.getMessage());
+                    field.reset();
                 }
             } else {
                 String value = reader.read(field.name());
-                if (value != null) {
-                    if (field instanceof BaseNumberField<?> numberField && numberField.math()) {
-                        String evaluated = MathEvaluator.tryEvaluate(value, numberField.strictMath());
-                        if (evaluated != null) {
-                            value = evaluated;
-                        } else {
-                            field.reset();
-                            continue;
-                        }
+                // RENAMED FIELDS PICK UP VALUES FROM THEIR FORMER NAMES
+                for (int a = 0; value == null && a < field.aliases().length; a++) {
+                    value = reader.read(field.aliases()[a]);
+                }
+                if (value == null) {
+                    continue;
+                }
+
+                // STRICT MATH IS A HARD-FAIL CONTRACT: ITS EXCEPTION MUST ABORT THE LOAD
+                if (field instanceof BaseNumberField<?> numberField && numberField.math()) {
+                    String evaluated = MathEvaluator.tryEvaluate(value, numberField.strictMath());
+                    if (evaluated == null) {
+                        field.reset();
+                        continue;
                     }
-                    field.set0(WaterConfig.tryParse(value, field.type(), field.subType()));
+                    // INTEGRAL FIELDS TRUNCATE FRACTIONAL MATH RESULTS (DOCUMENTED CONTRACT)
+                    Class<?> t = field.type();
+                    int dot = evaluated.indexOf('.');
+                    if (dot >= 0 && (t == Integer.class || t == Long.class || t == Short.class || t == Byte.class)) {
+                        evaluated = evaluated.substring(0, dot);
+                    }
+                    value = evaluated;
+                }
+
+                // PER-FIELD ISOLATION: ONE BAD VALUE RESETS THAT FIELD, NEVER ABORTS THE WHOLE LOAD.
+                // REPAIR: parseElement DECODES VIA THE CODEC, THEN COERCES TO THE FIELD TYPE ON FAILURE
+                try {
+                    field.set0(WaterConfig.parseElement(value, field.type()));
+                } catch (Exception e) {
+                    System.err.println("[WaterConfig] Invalid value for field '" + field.id() + "', reset to default: " + e.getMessage());
+                    field.reset();
                 }
             }
         }
     }
 
     void save() throws IOException {
-        try (IFormatWriter writer = this.format.createWriter(this.filePath)) {
-            for (String c : this.comments()) {
-                writer.write(c);
+        synchronized (this.ioLock) {
+            byte[] previous = (this.backups > 0 && this.filePath.toFile().exists()) ? Tools.readAllBytes(this.filePath) : null;
+
+            try (IFormatWriter writer = this.format.createWriter(this.filePath)) {
+                for (String c : this.comments()) {
+                    writer.write(c);
+                }
+                writer.push(this.name());
+                this.save(this, writer);
+                writer.pop();
             }
-            writer.push(this.name());
-            this.save(this, writer);
-            writer.pop();
+
+            // ROTATE BACKUPS ONLY WHEN THE SAVED CONTENT ACTUALLY CHANGED
+            if (previous != null && !Arrays.equals(previous, Tools.readAllBytes(this.filePath))) {
+                for (int i = this.backups - 1; i >= 1; i--) {
+                    Path from = backupPath(i);
+                    if (Files.exists(from)) {
+                        Files.move(from, backupPath(i + 1), StandardCopyOption.REPLACE_EXISTING);
+                    }
+                }
+                Files.write(backupPath(1), previous);
+            }
         }
+    }
+
+    private Path backupPath(int index) {
+        return this.filePath.resolveSibling(this.filePath.getFileName() + "_backup" + index);
     }
 
     private void save(ConfigGroup group, IFormatWriter writer) {
@@ -205,6 +367,11 @@ public final class ConfigSpec extends ConfigGroup {
                     writer.push(g.name());
                     this.save(g, writer);
                     writer.pop();
+                    continue;
+                }
+
+                if (field instanceof IStructuredField sf) {
+                    sf.writeSelf(writer);
                     continue;
                 }
 
@@ -274,14 +441,20 @@ public final class ConfigSpec extends ConfigGroup {
                     writer.write(pathField.runtimePath ? COMMENT_PATH_RUNTIME : COMMENT_PATH_STATIC);
                     if (pathField.fileExists) {
                         writer.write(COMMENT_PATH_FILE_EXISTS);
+                        writer.write(pathField.hardfail ? COMMENT_PATH_HARD_FAIL : COMMENT_PATH_SOFT_FAIL);
                     }
                 }
 
 
-                if (field instanceof ListField<?> listField) {
-                    writer.write(field.name(), WaterConfig.tryEncode(listField.get().toArray(), field.type(), field.subType()), field.type(), field.subType());
-                } else if (field instanceof ArrayField<?> arrayField) {
-                    writer.write(field.name(), WaterConfig.tryEncode(arrayField.get(), field.type(), field.subType()), field.type(), field.subType());
+                if (field instanceof CollectionField<?, ?> collectionField) {
+                    Object[] elements = (field instanceof ListField<?> listField) ? listField.get().toArray() : ((ArrayField<?>) field).get();
+                    String[] encoded = WaterConfig.tryEncode(elements, field.type(), field.subType());
+                    if (collectionField.stringify) {
+                        // STRINGIFY SUGAR: ONE COMMA-SEPARATED STRING INSTEAD OF A NATIVE ARRAY
+                        writer.write(field.name(), String.join(", ", encoded), String.class, null);
+                    } else {
+                        writer.write(field.name(), encoded, field.type(), field.subType());
+                    }
                 } else {
                     writer.write(field.name(), WaterConfig.tryEncode(field.get(), field.subType()), field.type(), field.subType());
                 }
@@ -294,6 +467,7 @@ public final class ConfigSpec extends ConfigGroup {
 
     public static final class SpecBuilder {
         private final ConfigSpec spec;
+        private final Deque<Integer> pushedLevels = new ArrayDeque<>();
         private ConfigGroup active;
 
         public SpecBuilder(String name, String format, String suffix, int backups) {
@@ -313,6 +487,12 @@ public final class ConfigSpec extends ConfigGroup {
 
             Path path = WaterConfig.getPath().toAbsolutePath().resolve(name + (!suffix.isEmpty() ? ("-" + suffix) : "") + format.extension());
             this.spec = new ConfigSpec(name, format, suffix, path, backups);
+            this.active = this.spec;
+        }
+
+        // REVERSESPEC INTERNAL: POINTS THE SPEC AT AN ARBITRARY EXISTING FILE
+        SpecBuilder(String name, IFormatCodec format, Path path, int backups) {
+            this.spec = new ConfigSpec(name, format, "", path, backups);
             this.active = this.spec;
         }
 
@@ -370,6 +550,22 @@ public final class ConfigSpec extends ConfigGroup {
 
         <T, S> BaseFieldBuilder<CustomFieldBuilder<T, S>, BaseConfigField<T, S>> define(String name, Field field, Object context) {
             return new CustomFieldBuilder<>(name, this.active, field, context);
+        }
+
+        <T extends Comparable<T>> TemporalFieldBuilder<T> defineTemporal(String name, Field field, Object context, Class<T> type) {
+            return new TemporalFieldBuilder<>(name, this.active, field, context, type);
+        }
+
+        public <T extends Comparable<T>> TemporalFieldBuilder<T> defineTemporal(String name, T defaultValue, Class<T> type) {
+            return new TemporalFieldBuilder<>(name, this.active, defaultValue, type);
+        }
+
+        ColorFieldBuilder defineColor(String name, Field field, Object context) {
+            return new ColorFieldBuilder(name, this.active, field, context);
+        }
+
+        public ColorFieldBuilder defineColor(String name, Color defaultValue) {
+            return new ColorFieldBuilder(name, this.active, defaultValue);
         }
 
         public PathFieldBuilder definePath(String name, Path defaultValue) {
@@ -435,20 +631,29 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         public SpecBuilder push(String name) {
-            for (String n: name.split("\\.")) {
+            String[] parts = name.split("\\.");
+            for (String n: parts) {
                 this.active = new ConfigGroup(n, this.active);
             }
+            // A DOTTED PUSH CREATES SEVERAL LEVELS: pop() MUST UNDO ALL OF THEM
+            this.pushedLevels.addLast(parts.length);
             return this;
         }
 
         public SpecBuilder pop() {
-            if (!this.active.fields.isEmpty()) {
-                this.active.fields = Collections.unmodifiableSet(this.active.fields);
-                this.active.comments = Collections.unmodifiableSet(this.active.comments);
-            } else {
-                this.active.group.dispose(this.active); // remove empty group
+            Integer levels = this.pushedLevels.pollLast();
+            if (levels == null) {
+                throw new IllegalStateException("pop() without a matching push()");
             }
-            this.active = this.active.group;
+            while (levels-- > 0) {
+                if (!this.active.fields.isEmpty()) {
+                    this.active.fields = Collections.unmodifiableSet(this.active.fields);
+                    this.active.comments = Collections.unmodifiableSet(this.active.comments);
+                } else {
+                    this.active.group.dispose(this.active); // REMOVE EMPTY GROUP
+                }
+                this.active = this.active.group;
+            }
             return this;
         }
 
@@ -463,6 +668,7 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         public SpecBuilder popAll() {
+            this.pushedLevels.clear();
             this.active = this.spec;
             return this;
         }
@@ -470,6 +676,16 @@ public final class ConfigSpec extends ConfigGroup {
         public ConfigSpec build() {
             this.spec.fields = Collections.unmodifiableSet(this.spec.fields);
             this.spec.comments = Collections.unmodifiableSet(this.spec.comments);
+
+            // PARENT DIRECTORIES ARE CREATED ONCE HERE INSTEAD OF ON EVERY SAVE
+            Path parent = this.spec.path().toAbsolutePath().getParent();
+            if (parent != null) {
+                try {
+                    Files.createDirectories(parent);
+                } catch (IOException e) {
+                    throw new IllegalStateException("Failed to create config directory " + parent, e);
+                }
+            }
             return spec;
         }
     }
@@ -496,7 +712,7 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         @Override
-        public BaseConfigField<T, S> end() {
+        protected BaseConfigField<T, S> build() {
             if (field == null) {
                 return new BaseConfigField<>(this.name, this.group, this.comments, this.defaultValue, this.control, this.suffix) {
 
@@ -535,10 +751,90 @@ public final class ConfigSpec extends ConfigGroup {
         }
     }
 
+    public static final class TemporalFieldBuilder<T extends Comparable<T>> extends BaseFieldBuilder<TemporalFieldBuilder<T>, TemporalField<T>> {
+        private final Class<T> type;
+        private final Field field;
+        private final Object context;
+        private final T defaultValue;
+        private T from;
+        private T to;
+
+        private TemporalFieldBuilder(String name, ConfigGroup group, Field field, Object context, Class<T> type) {
+            super(name, group);
+            this.field = field;
+            this.context = context;
+            this.type = type;
+            this.defaultValue = null;
+        }
+
+        private TemporalFieldBuilder(String name, ConfigGroup group, T defaultValue, Class<T> type) {
+            super(name, group);
+            this.field = null;
+            this.context = null;
+            this.type = type;
+            this.defaultValue = defaultValue;
+        }
+
+        public TemporalFieldBuilder<T> from(T from) {
+            this.from = from;
+            return this;
+        }
+
+        public TemporalFieldBuilder<T> to(T to) {
+            this.to = to;
+            return this;
+        }
+
+        @Override
+        protected TemporalField<T> build() {
+            if (this.field == null) {
+                return new TemporalField<>(this.name, this.group, this.comments, this.type, this.from, this.to, this.defaultValue, this.control, this.suffix);
+            } else {
+                return new TemporalField<>(this.name, this.group, this.comments, this.type, this.from, this.to, this.field, this.context, this.control, this.suffix);
+            }
+        }
+    }
+
+    public static final class ColorFieldBuilder extends BaseFieldBuilder<ColorFieldBuilder, ColorField> {
+        private final Color defaultValue;
+        private final Field field;
+        private final Object context;
+        private ColorConditions.Radix radix = ColorConditions.Radix.AUTO;
+
+        private ColorFieldBuilder(String name, ConfigGroup group, Color defaultValue) {
+            super(name, group);
+            this.defaultValue = defaultValue;
+            this.field = null;
+            this.context = null;
+        }
+
+        private ColorFieldBuilder(String name, ConfigGroup group, Field field, Object context) {
+            super(name, group);
+            this.defaultValue = null;
+            this.field = field;
+            this.context = context;
+        }
+
+        public ColorFieldBuilder radix(ColorConditions.Radix radix) {
+            this.radix = radix;
+            return this;
+        }
+
+        @Override
+        protected ColorField build() {
+            if (this.field == null) {
+                return new ColorField(this.name, this.group, this.comments, this.radix, this.defaultValue, this.control, this.suffix);
+            } else {
+                return new ColorField(this.name, this.group, this.comments, this.radix, this.field, this.context, this.control, this.suffix);
+            }
+        }
+    }
+
     public static final class PathFieldBuilder extends BaseFieldBuilder<PathFieldBuilder, PathField> {
         private final Path defaultValue;
         private boolean runtimePath = true;
         private boolean fileExists = false;
+        private boolean hardfail = false;
 
         private PathFieldBuilder(String name, ConfigGroup group, Path defaultValue) {
             super(name, group);
@@ -561,79 +857,99 @@ public final class ConfigSpec extends ConfigGroup {
             return this;
         }
 
+        public PathFieldBuilder hardfail(boolean hardfail) {
+            this.hardfail = hardfail;
+            return this;
+        }
+
         @Override
-        public PathField end() {
+        protected PathField build() {
             if (this.field == null) {
-                return new PathField(this.name, this.group, this.comments, this.runtimePath, this.fileExists, this.defaultValue, this.control, this.suffix);
+                return new PathField(this.name, this.group, this.comments, this.runtimePath, this.fileExists, this.hardfail, this.defaultValue, this.control, this.suffix);
             } else {
-                return new PathField(this.name, this.group, this.comments, this.runtimePath, this.fileExists, this.field, this.context, this.control, this.suffix);
+                return new PathField(this.name, this.group, this.comments, this.runtimePath, this.fileExists, this.hardfail, this.field, this.context, this.control, this.suffix);
             }
         }
     }
 
-    static final class ArrayFieldBuilder<S> extends BaseFieldBuilder<ArrayFieldBuilder<S>, ArrayField<S>> {
-        private final Class<S> subType;
-        private final Field field;
-        private final Object context;
-        private final S[] defaultValue;
-        private boolean stringify = false;
-        private boolean singleline = true;
-        private boolean allowEmpty = true;
-        private boolean unique = false;
-        private int limit = Integer.MAX_VALUE;
-        private Class<? extends Predicate<S>> filter;
+    /**
+     * Shared options for collection (list/array) field builders.
+     */
+    public static abstract sealed class CollectionFieldBuilder<S, F extends CollectionField<?, S>, B extends CollectionFieldBuilder<S, F, B>> extends BaseFieldBuilder<B, F> permits ListFieldBuilder, ArrayFieldBuilder {
+        protected final Class<S> subType;
+        protected boolean stringify = false;
+        @Deprecated(forRemoval = true)
+        protected boolean singleline = true;
+        protected boolean allowEmpty = true;
+        protected boolean unique = false;
+        protected int limit = Integer.MAX_VALUE;
+        protected Class<? extends Predicate<S>> filter;
 
-        private ArrayFieldBuilder(String name, ConfigGroup group, S[] defaultValue, Class<S> subType) {
+        protected CollectionFieldBuilder(String name, ConfigGroup group, Class<S> subType) {
             super(name, group);
-            this.defaultValue = defaultValue;
             this.subType = subType;
-            this.field = null;
-            this.context = null;
         }
 
-        private ArrayFieldBuilder(String name, ConfigGroup group, Field field, Object context, Class<S> subType) {
-            super(name, group);
-            this.defaultValue = null;
-            this.subType = subType;
-            this.field = field;
-            this.context = context;
-        }
-
-        public ArrayFieldBuilder<S> stringify(boolean stringify) {
+        public B stringify(boolean stringify) {
             this.stringify = stringify;
-            return this;
+            return (B) this;
         }
 
-        public ArrayFieldBuilder<S> singleline(boolean singleline) {
+        @Deprecated(forRemoval = true)
+        public B singleline(boolean singleline) {
             this.singleline = singleline;
-            return this;
+            return (B) this;
         }
 
-        public ArrayFieldBuilder<S> allowEmpty(boolean allowEmpty) {
+        public B allowEmpty(boolean allowEmpty) {
             this.allowEmpty = allowEmpty;
-            return this;
+            return (B) this;
         }
 
-        public ArrayFieldBuilder<S> unique(boolean unique) {
+        public B unique(boolean unique) {
             this.unique = unique;
-            return this;
+            return (B) this;
         }
 
-        public ArrayFieldBuilder<S> limit(int limit) {
+        public B limit(int limit) {
             this.limit = limit;
-            return this;
+            return (B) this;
         }
 
-        public ArrayFieldBuilder<S> filter(Class<? extends Predicate<S>> filter) {
+        public B filter(Class<? extends Predicate<S>> filter) {
             if (filter == null) {
                 throw new IllegalArgumentException("Filter cannot be null");
             }
             this.filter = filter;
-            return this;
+            return (B) this;
+        }
+    }
+
+    static final class ArrayFieldBuilder<S> extends CollectionFieldBuilder<S, ArrayField<S>, ArrayFieldBuilder<S>> {
+        private final S[] defaultValue;
+
+        private ArrayFieldBuilder(String name, ConfigGroup group, S[] defaultValue, Class<S> subType) {
+            super(name, group, requireBoxed(name, subType));
+            this.defaultValue = defaultValue;
+        }
+
+        private ArrayFieldBuilder(String name, ConfigGroup group, Field field, Object context, Class<S> subType) {
+            this(name, group, null, subType);
+            this.field = field;
+            this.context = context;
+        }
+
+        // PRIMITIVE COMPONENT TYPES (int[]) CANNOT BACK AN ArrayField<S>: FAIL WITH A CLEAR MESSAGE
+        private static <S> Class<S> requireBoxed(String name, Class<S> subType) {
+            if (subType != null && subType.isPrimitive()) {
+                throw new IllegalArgumentException("Array field '" + name + "' has a primitive component type '"
+                        + subType.getName() + "[]'; use the boxed type instead (e.g. Integer[])");
+            }
+            return subType;
         }
 
         @Override
-        public ArrayField<S> end() {
+        protected ArrayField<S> build() {
             if (this.field == null) {
                 return new ArrayField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.defaultValue, this.subType, this.control, this.suffix);
             } else {
@@ -642,30 +958,16 @@ public final class ConfigSpec extends ConfigGroup {
         }
     }
 
-    public static final class ListFieldBuilder<S> extends BaseFieldBuilder<ListFieldBuilder<S>, ListField<S>> {
-        private final Class<S> subType;
-        private final Field field;
-        private final Object context;
+    public static final class ListFieldBuilder<S> extends CollectionFieldBuilder<S, ListField<S>, ListFieldBuilder<S>> {
         private final List<S> defaultValue;
-        private boolean stringify = false;
-        private boolean singleline = true;
-        private boolean allowEmpty = true;
-        private boolean unique = false;
-        private int limit = Integer.MAX_VALUE;
-        private Class<? extends Predicate<S>> filter;
 
         private ListFieldBuilder(String name, ConfigGroup group, List<S> defaultValue, Class<S> subType) {
-            super(name, group);
+            super(name, group, subType);
             this.defaultValue = defaultValue;
-            this.subType = subType;
-            this.field = null;
-            this.context = null;
         }
 
         private ListFieldBuilder(String name, ConfigGroup group, Field field, Object context, Class<S> subType) {
-            super(name, group);
-            this.defaultValue = null;
-            this.subType = subType;
+            this(name, group, null, subType);
             this.field = field;
             this.context = context;
         }
@@ -675,41 +977,8 @@ public final class ConfigSpec extends ConfigGroup {
             return this;
         }
 
-        public ListFieldBuilder<S> stringify(boolean stringify) {
-            this.stringify = stringify;
-            return this;
-        }
-
-        public ListFieldBuilder<S> singleline(boolean singleline) {
-            this.singleline = singleline;
-            return this;
-        }
-
-        public ListFieldBuilder<S> allowEmpty(boolean allowEmpty) {
-            this.allowEmpty = allowEmpty;
-            return this;
-        }
-
-        public ListFieldBuilder<S> unique(boolean unique) {
-            this.unique = unique;
-            return this;
-        }
-
-        public ListFieldBuilder<S> limit(int limit) {
-            this.limit = limit;
-            return this;
-        }
-
-        public ListFieldBuilder<S> filter(Class<? extends Predicate<S>> filter) {
-            if (filter == null) {
-                throw new IllegalArgumentException("Filter cannot be null");
-            }
-            this.filter = filter;
-            return this;
-        }
-
         @Override
-        public ListField<S> end() {
+        protected ListField<S> build() {
             if (this.field == null) {
                 return new ListField<>(this.name, this.group, this.comments, this.stringify, this.singleline, this.allowEmpty, this.unique, this.limit, this.filter, this.defaultValue, this.subType, this.control, this.suffix);
             } else {
@@ -733,8 +1002,8 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         @Override
-        public EnumField<T> end() {
-            if (this.field == null) { // WEAK CHECK
+        protected EnumField<T> build() {
+            if (this.field == null) { // NATIVE MODE WHEN NO REFLECTION FIELD IS BOUND
                 return new EnumField<>(this.name, this.group, this.comments, this.defaultValue, this.control, this.suffix);
             } else {
                 return new EnumField<>(this.name, this.group, this.comments, this.field, this.context, this.control, this.suffix);
@@ -793,7 +1062,7 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         @Override
-        public StringField end() {
+        protected StringField build() {
             if (this.field == null) {
                 return new StringField(this.name, this.group, this.comments, this.startsWith, this.endsWith, this.allowEmpty, this.condition, this.regexFlags, this.mode, this.defaultValue, this.control, this.suffix);
             } else {
@@ -817,7 +1086,7 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         @Override
-        public BooleanField end() {
+        protected BooleanField build() {
             if (this.field == null) {
                 return new BooleanField(this.name, this.group, this.comments, this.defaultValue, this.control, this.suffix);
             } else {
@@ -843,7 +1112,7 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         @Override
-        public ByteField end() {
+        protected ByteField build() {
             if (this.field == null) {
                 return new ByteField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control, this.suffix);
             } else {
@@ -869,7 +1138,7 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         @Override
-        public ShortField end() {
+        protected ShortField build() {
             if (this.field == null) {
                 return new ShortField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control, this.suffix);
             } else {
@@ -893,7 +1162,7 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         @Override
-        public CharField end() {
+        protected CharField build() {
             if (this.field == null) {
                 return new CharField(this.name, this.group, this.comments, this.defaultValue, this.control, this.suffix);
             } else {
@@ -919,7 +1188,7 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         @Override
-        public IntField end() {
+        protected IntField build() {
             if (this.field == null) {
                 return new IntField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control, this.suffix);
             } else {
@@ -945,7 +1214,7 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         @Override
-        public LongField end() {
+        protected LongField build() {
             if (this.field == null) {
                 return new LongField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control, this.suffix);
             } else {
@@ -971,7 +1240,7 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         @Override
-        public FloatField end() {
+        protected FloatField build() {
             if (this.field == null) {
                 return new FloatField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control, this.suffix);
             } else {
@@ -997,7 +1266,7 @@ public final class ConfigSpec extends ConfigGroup {
         }
 
         @Override
-        public DoubleField end() {
+        protected DoubleField build() {
             if (this.field == null) {
                 return new DoubleField(this.name, this.group, this.comments, this.math, this.strictMath, this.min, this.max, this.defaultValue, this.control, this.suffix);
             } else {
@@ -1047,6 +1316,7 @@ public final class ConfigSpec extends ConfigGroup {
         protected final Set<String> comments = new LinkedHashSet<>();
         protected Control control = Control.DEFAULT;
         protected String suffix = "";
+        protected String[] aliases = IConfigField.NO_ALIASES;
         protected Field field;
         protected Object context;
 
@@ -1057,6 +1327,15 @@ public final class ConfigSpec extends ConfigGroup {
 
         public B comments(String... comments) {
             this.comments.addAll(Arrays.asList(comments));
+            return (B) this;
+        }
+
+        /**
+         * Former names of this field. On load, when the current name is missing from the
+         * file, aliases are tried in order so renamed fields pick up values from old files.
+         */
+        public B aliases(String... aliases) {
+            this.aliases = (aliases == null) ? IConfigField.NO_ALIASES : aliases;
             return (B) this;
         }
 
@@ -1078,6 +1357,14 @@ public final class ConfigSpec extends ConfigGroup {
             return (B) this;
         }
 
-        public abstract F end();
+        public final F end() {
+            F field = this.build();
+            if (field instanceof BaseConfigField<?, ?> base) {
+                base.aliases(this.aliases);
+            }
+            return field;
+        }
+
+        protected abstract F build();
     }
 }

@@ -7,6 +7,15 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public interface IConfigField<T, S> extends Consumer<T>, Supplier<T> {
+    String[] NO_ALIASES = new String[0];
+
+    /**
+     * Former names of this field, tried in order on load when the current name is
+     * missing from the file. Empty by default.
+     */
+    default String[] aliases() {
+        return NO_ALIASES;
+    }
 
     /**
      * returns the full field qualifier of this field, containing the spec id,

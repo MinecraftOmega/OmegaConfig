@@ -2,19 +2,35 @@ package me.srrapero720.waterconfig;
 
 import me.srrapero720.waterconfig.api.ICodec;
 import me.srrapero720.waterconfig.api.IComplexCodec;
+import me.srrapero720.waterconfig.api.annotations.ColorConditions;
 import me.srrapero720.waterconfig.api.annotations.Comment;
+import me.srrapero720.waterconfig.api.annotations.ListConditions;
 import me.srrapero720.waterconfig.api.annotations.NumberConditions;
+import me.srrapero720.waterconfig.api.annotations.PathConditions;
 import me.srrapero720.waterconfig.api.annotations.Spec;
 import me.srrapero720.waterconfig.api.annotations.StringConditions;
+import me.srrapero720.waterconfig.api.annotations.TimeConditions;
+import me.srrapero720.waterconfig.api.formats.IFormatCodec;
+import me.srrapero720.waterconfig.api.formats.IFormatReader;
+
+import java.util.function.Predicate;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static me.srrapero720.waterconfig.WaterConfigRegistry.*;
@@ -32,7 +48,12 @@ public class WaterConfig {
         t.setDaemon(true);
         return t;
     });
-    private static Thread RT_WORKER;
+    private static volatile Thread RT_WORKER;
+    private static volatile boolean SHUTDOWN = false;
+
+    // FILE LOCKDOWN (FROM WaterConfigConfig), APPLIED ONCE AT BOOTSTRAP
+    private static volatile WaterConfigConfig.Lockdown LOCKDOWN = WaterConfigConfig.Lockdown.OFF;
+    private static volatile boolean selfConfigDone = false;
 
     // ══════════════════════════════════════════════════════════
     //  LOOP SPECS — exclusive to the worker
@@ -71,23 +92,115 @@ public class WaterConfig {
         }
     }
 
-    public static ConfigSpec register(ConfigSpec spec) {
+    /**
+     * The registered spec by name, {@link ConfigSpec#refresh() refreshed} before returning so a
+     * config manager fetch always sees validated, real values. Null when no spec has that name.
+     */
+    public static ConfigSpec spec(String name) {
+        return spec(name, true);
+    }
+
+    public static ConfigSpec spec(String name, boolean refresh) {
+        ConfigSpec spec;
         synchronized (SPECS) {
+            spec = SPECS.get(name);
+        }
+        if (spec != null && refresh) {
+            spec.refresh();
+        }
+        return spec;
+    }
+
+    /**
+     * Every registered spec, {@link ConfigSpec#refresh() refreshed} before returning.
+     */
+    public static Collection<ConfigSpec> specs() {
+        return specs(true);
+    }
+
+    public static Collection<ConfigSpec> specs(boolean refresh) {
+        List<ConfigSpec> all;
+        synchronized (SPECS) {
+            all = List.copyOf(SPECS.values());
+        }
+        if (refresh) {
+            all.forEach(ConfigSpec::refresh);
+        }
+        return all;
+    }
+
+    /**
+     * The registered spec managing the given file, or null. A pure lookup — no refresh.
+     */
+    public static ConfigSpec specOf(Path path) {
+        synchronized (SPECS) {
+            for (ConfigSpec spec : SPECS.values()) {
+                if (samePath(spec.path(), path)) {
+                    return spec;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean samePath(Path a, Path b) {
+        return a.toAbsolutePath().normalize().equals(b.toAbsolutePath().normalize());
+    }
+
+    public static ConfigSpec register(ConfigSpec spec) {
+        ensureSelfConfig();
+        if (PANIC || SHUTDOWN) {
+            failSpec(spec, new IllegalStateException("WaterConfig is shut down, spec '" + spec.name() + "' cannot be registered"));
+            return spec;
+        }
+
+        synchronized (SPECS) {
+            // INTRA-PROCESS EXCLUSIVITY: TWO DIFFERENT SPECS MAY NOT MANAGE THE SAME FILE (THEY WOULD
+            // CLOBBER EACH OTHER). RE-REGISTERING THE SAME NAME OVERWRITES, AS BEFORE.
+            for (ConfigSpec other : SPECS.values()) {
+                if (other != spec && !other.name().equals(spec.name()) && samePath(other.path(), spec.path())) {
+                    failSpec(spec, new IllegalStateException("File '" + spec.path() + "' is already managed by spec '" + other.name() + "'"));
+                    return spec;
+                }
+            }
             SPECS.put(spec.name(), spec);
         }
 
-        IO_POOL.submit(() -> {
-            try {
-                if (!spec.load()) spec.save();
-                spec.loaded = true;
-                spec.dirty = false;
-                LOOP_SPECS.put(spec.name(), spec);
-            } catch (Exception e) {
-                System.err.println("[WaterConfig] Failed to load spec '" + spec.name() + "': " + e.getMessage());
-            }
-        });
+        try {
+            IO_POOL.submit(() -> {
+                spec.status = ConfigSpec.Status.LOADING;
+                try {
+                    if (!spec.load()) spec.save();
+                    spec.dirty = false;
+                    spec.status = ConfigSpec.Status.LOADED;
+                } catch (Throwable e) {
+                    spec.loadError = e;
+                    spec.status = ConfigSpec.Status.FAILED;
+                    System.err.println("[WaterConfig] Failed to load spec '" + spec.name() + "': " + e.getMessage());
+                } finally {
+                    // EVEN A FAILED SPEC ENTERS THE LOOP SO A LATER save()/reload CAN RECOVER IT
+                    LOOP_SPECS.put(spec.name(), spec);
+                    synchronized (spec) {
+                        spec.notifyAll();
+                    }
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            // SHUTDOWN RACED THE CHECK ABOVE
+            failSpec(spec, new IllegalStateException("WaterConfig is shut down, spec '" + spec.name() + "' cannot be registered", e));
+        }
 
         return spec;
+    }
+
+    // PUBLISHES A TERMINAL FAILED STATE SO registerBlocking NEVER HANGS ON A DEAD REGISTRATION
+    private static void failSpec(ConfigSpec spec, Throwable error) {
+        System.err.println("[WaterConfig] " + error.getMessage());
+        spec.loadError = error;
+        spec.status = ConfigSpec.Status.FAILED;
+        synchronized (spec) {
+            spec.notifyAll();
+        }
     }
 
     public static ConfigSpec register(Class<?> clazz) {
@@ -125,27 +238,27 @@ public class WaterConfig {
     }
 
     public static ConfigSpec registerBlocking(Object instance) {
-        ConfigSpec spec = register(instance);
-        while (!spec.isLoaded()) {
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Thread was interrupted while waiting for config to load", e);
-            }
-        }
-        return spec;
+        return awaitTerminal(register(instance));
     }
 
     public static ConfigSpec registerBlocking(Class<?> clazz) {
-        ConfigSpec spec = register(clazz);
-        while (!spec.isLoaded()) {
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Thread was interrupted while waiting for config to load", e);
+        return awaitTerminal(register(clazz));
+    }
+
+    // WAITS ON THE SPEC MONITOR FOR A TERMINAL STATE, RETHROWS THE LOAD ERROR ON FAILED
+    private static ConfigSpec awaitTerminal(ConfigSpec spec) {
+        synchronized (spec) {
+            while (spec.status() != ConfigSpec.Status.LOADED && spec.status() != ConfigSpec.Status.FAILED) {
+                try {
+                    spec.wait();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Thread was interrupted while waiting for config to load", e);
+                }
             }
+        }
+        if (spec.status() == ConfigSpec.Status.FAILED) {
+            throw new RuntimeException("Failed to load spec '" + spec.name() + "'", spec.loadError());
         }
         return spec;
     }
@@ -246,11 +359,35 @@ public class WaterConfig {
 
                 fieldBuilder = stringFieldBuilder;
             } else if (specFieldType == Path.class) {
-                fieldBuilder = builder.definePath(name, field, instance);
+                ConfigSpec.PathFieldBuilder pathFieldBuilder = builder.definePath(name, field, instance);
+                PathConditions conditions = field.getAnnotation(PathConditions.class);
+                if (conditions != null) {
+                    pathFieldBuilder.runtimePath(conditions.runtimePath());
+                    pathFieldBuilder.fileExists(conditions.existsFile());
+                    pathFieldBuilder.hardfail(conditions.hardfail());
+                }
+
+                fieldBuilder = pathFieldBuilder;
+            }
+            else if (specFieldType == java.awt.Color.class) {
+                ConfigSpec.ColorFieldBuilder colorFieldBuilder = builder.defineColor(name, field, instance);
+                ColorConditions conditions = field.getAnnotation(ColorConditions.class);
+                if (conditions != null) {
+                    colorFieldBuilder.radix(conditions.value());
+                }
+                fieldBuilder = colorFieldBuilder;
             }
             else if (specFieldType == Character.class) fieldBuilder = builder.defineChar(name, field, instance);
-            else if (specFieldType == List.class) fieldBuilder = builder.defineList(name, field, instance, Tools.subTypeOf(field));
-            else if (specFieldType.isArray()) fieldBuilder = builder.defineArray(name, field, instance, Tools.subTypeOf(field));
+            else if (specFieldType == List.class) {
+                ConfigSpec.ListFieldBuilder<?> listFieldBuilder = builder.defineList(name, field, instance, Tools.subTypeOf(field));
+                applyListConditions(listFieldBuilder, field);
+                fieldBuilder = listFieldBuilder;
+            }
+            else if (specFieldType.isArray()) {
+                ConfigSpec.ArrayFieldBuilder<?> arrayFieldBuilder = builder.defineArray(name, field, instance, Tools.subTypeOf(field));
+                applyListConditions(arrayFieldBuilder, field);
+                fieldBuilder = arrayFieldBuilder;
+            }
             else if (Enum.class.isAssignableFrom(specFieldType)) fieldBuilder = builder.defineEnum(name, field, instance);
             else if (specFieldType.isAnnotationPresent(Spec.class)) {
                 if (!Modifier.isFinal(field.getModifiers()))
@@ -265,13 +402,23 @@ public class WaterConfig {
 
                 continue; // SKIP END CALL BELOW
             }
-            else fieldBuilder = builder.define(name, field, instance);
+            else {
+                TimeConditions time = field.getAnnotation(TimeConditions.class);
+                if (time != null && COMPARABLE_TEMPORALS.contains(specFieldType)) {
+                    fieldBuilder = defineTemporal(builder, name, field, instance, specFieldType, time);
+                } else {
+                    fieldBuilder = builder.define(name, field, instance);
+                }
+            }
 
             // CONTROL — FALLS BACK TO THE FIELD TYPE DEFAULT WHEN NOT CHOSEN
             fieldBuilder.control(specField.control());
 
             // SUFFIX — DISPLAY-ONLY HINT FOR EXTERNAL CONFIG UIS
             fieldBuilder.suffix(specField.suffix());
+
+            // ALIASES — FORMER NAMES PICKED UP FROM OLD FILES ON LOAD
+            fieldBuilder.aliases(specField.aliases());
 
             // COMMENTS
             for (Comment comment: field.getAnnotationsByType(Comment.class)) {
@@ -307,23 +454,253 @@ public class WaterConfig {
         }
     }
 
+    // TEMPORAL TYPES THAT ARE TOTALLY ORDERED, SO @TimeConditions from/to BOUNDS APPLY (Period IS NOT)
+    private static final Set<Class<?>> COMPARABLE_TEMPORALS = Set.of(
+            Duration.class, Instant.class, LocalDate.class, LocalTime.class,
+            LocalDateTime.class, OffsetDateTime.class, ZonedDateTime.class);
+
+    // BUILDS A TEMPORAL FIELD WITH @TimeConditions from/to BOUNDS PARSED VIA THE TYPE'S CODEC
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static ConfigSpec.BaseFieldBuilder<?, ?> defineTemporal(ConfigSpec.SpecBuilder builder, String name, Field field, Object instance, Class<?> type, TimeConditions time) {
+        ConfigSpec.TemporalFieldBuilder tb = builder.defineTemporal(name, field, instance, (Class) type);
+        if (!time.from().isEmpty()) {
+            tb.from((Comparable) parseElement(time.from(), type));
+        }
+        if (!time.to().isEmpty()) {
+            tb.to((Comparable) parseElement(time.to(), type));
+        }
+        return tb;
+    }
+
+    // COPIES @ListConditions OPTIONS INTO A COLLECTION FIELD BUILDER
+    @SuppressWarnings({"unchecked", "rawtypes", "removal"})
+    private static void applyListConditions(ConfigSpec.CollectionFieldBuilder<?, ?, ?> builder, Field field) {
+        ListConditions conditions = field.getAnnotation(ListConditions.class);
+        if (conditions == null) return;
+
+        builder.stringify(conditions.stringify());
+        builder.singleline(conditions.singleline());
+        builder.allowEmpty(conditions.allowEmpty());
+        builder.unique(conditions.unique());
+        builder.limit(conditions.limit());
+        if (conditions.filter() != Predicate.class) {
+            ((ConfigSpec.CollectionFieldBuilder) builder).filter(conditions.filter());
+        }
+    }
+
+    /**
+     * Builds a runtime spec from a config file you have no class or spec for: values become
+     * the field defaults, dotted keys become groups and comments are preserved for save-back.
+     *
+     * <p>Parsing is always strict — without an original spec there is nothing to contrast a
+     * repair against, so a file that does not parse cleanly returns null instead of guessing.</p>
+     *
+     * <p>The spec is named after the file stem and is NOT auto-persisted nor worker-managed;
+     * the caller decides when to save.</p>
+     *
+     * @return the reconstructed spec, or null when the extension is unknown or the file cannot be parsed
+     */
+    public static ConfigSpec reverseSpec(Path path) {
+        Objects.requireNonNull(path, "Path cannot be null");
+
+        // ALREADY MANAGED: HAND BACK THE REAL SPEC INSTEAD OF FABRICATING A DUPLICATE MANAGER
+        // TODO: warn (no logger yet) that reverseSpec is not how to fetch a registered spec — use WaterConfig.specOf(path)
+        ConfigSpec managed = specOf(path);
+        if (managed != null) {
+            return managed;
+        }
+
+        // FORMAT IS PICKED FROM THE FILE EXTENSION
+        String fileName = path.getFileName().toString();
+        int dot = fileName.lastIndexOf('.');
+        if (dot <= 0) {
+            return null;
+        }
+        IFormatCodec format = FORMATS.get(fileName.substring(dot + 1).toLowerCase());
+        if (format == null) {
+            return null;
+        }
+
+        // ALWAYS STRICT: A BROKEN FILE RETURNS NULL, NEVER A GUESSED REPAIR
+        Map<String, Object> entries;
+        Map<String, List<String>> comments;
+        try (IFormatReader reader = format.createReader(path)) {
+            entries = new LinkedHashMap<>(reader.entries());
+            comments = new LinkedHashMap<>(reader.comments());
+        } catch (Exception e) {
+            return null;
+        }
+
+        // SPLIT DOTTED KEYS INTO A GROUP TREE; A KEY THAT CONFLICTS WITH A GROUP IS DROPPED
+        LinkedHashMap<String, Object> tree = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry: entries.entrySet()) {
+            String[] parts = entry.getKey().split("\\.");
+            LinkedHashMap<String, Object> node = tree;
+            for (int p = 0; p < parts.length - 1 && node != null; p++) {
+                Object child = node.computeIfAbsent(parts[p], k -> new LinkedHashMap<String, Object>());
+                node = (child instanceof LinkedHashMap<?, ?> map) ? (LinkedHashMap<String, Object>) map : null;
+            }
+            if (node == null || node.get(parts[parts.length - 1]) instanceof LinkedHashMap<?, ?>) {
+                System.err.println("[WaterConfig] reverseSpec: key '" + entry.getKey() + "' conflicts with a group, dropped");
+                continue;
+            }
+            node.put(parts[parts.length - 1], entry.getValue());
+        }
+
+        ConfigSpec.SpecBuilder builder = new ConfigSpec.SpecBuilder(fileName.substring(0, dot), format, path, 0);
+        List<String> fileComments = comments.get("");
+        if (fileComments != null) {
+            builder.comments(fileComments.toArray(new String[0]));
+        }
+        reverseSpec$define(builder, tree, comments, "");
+
+        ConfigSpec spec = builder.build();
+        // PARSED VALUES ARE THE LOADED STATE: NOTHING PENDING, NOTHING WORKER-MANAGED
+        spec.dirty = false;
+        spec.status = ConfigSpec.Status.LOADED;
+        return spec;
+    }
+
+    /**
+     * @see #reverseSpec(Path)
+     */
+    public static ConfigSpec reverseSpec(java.io.File file) {
+        Objects.requireNonNull(file, "File cannot be null");
+        return reverseSpec(file.toPath());
+    }
+
+    // DEFINES EVERY TREE NODE: GROUPS RECURSE, LEAVES INFER THEIR TYPE FROM THE VALUE SHAPE
+    private static void reverseSpec$define(ConfigSpec.SpecBuilder builder, LinkedHashMap<String, Object> node, Map<String, List<String>> comments, String prefix) {
+        for (Map.Entry<String, Object> entry: node.entrySet()) {
+            String key = entry.getKey();
+            String fullKey = prefix + key;
+            List<String> entryComments = comments.get(fullKey);
+
+            if (entry.getValue() instanceof LinkedHashMap<?, ?> child) {
+                builder.push(key);
+                if (entryComments != null) {
+                    builder.comments(entryComments.toArray(new String[0]));
+                }
+                reverseSpec$define(builder, (LinkedHashMap<String, Object>) child, comments, fullKey + ".");
+                builder.pop();
+                continue;
+            }
+
+            ConfigSpec.BaseFieldBuilder<?, ?> fieldBuilder;
+            if (entry.getValue() instanceof String[] array) {
+                fieldBuilder = reverseSpec$defineList(builder, key, array);
+            } else {
+                String value = (String) entry.getValue();
+                fieldBuilder = switch (inferKind(value)) {
+                    case BOOLEAN -> builder.defineBoolean(key, Boolean.parseBoolean(value));
+                    case INT -> builder.defineInt(key, Integer.parseInt(value));
+                    case LONG -> builder.defineLong(key, Long.parseLong(value));
+                    case DOUBLE -> builder.defineDouble(key, Double.parseDouble(value));
+                    case STRING -> builder.defineString(key, value);
+                };
+            }
+            if (entryComments != null) {
+                fieldBuilder.comments(entryComments.toArray(new String[0]));
+            }
+            fieldBuilder.end();
+        }
+    }
+
+    // LISTS INFER THE NARROWEST COMMON ELEMENT TYPE ACROSS ALL VALUES
+    private static ConfigSpec.BaseFieldBuilder<?, ?> reverseSpec$defineList(ConfigSpec.SpecBuilder builder, String key, String[] array) {
+        Kind common = null;
+        for (String element: array) {
+            Kind kind = inferKind(element);
+            common = (common == null) ? kind : switch (common) {
+                case BOOLEAN -> kind == Kind.BOOLEAN ? Kind.BOOLEAN : Kind.STRING;
+                case INT -> kind == Kind.INT ? Kind.INT : (kind == Kind.LONG ? Kind.LONG : (kind == Kind.DOUBLE ? Kind.DOUBLE : Kind.STRING));
+                case LONG -> (kind == Kind.INT || kind == Kind.LONG) ? Kind.LONG : (kind == Kind.DOUBLE ? Kind.DOUBLE : Kind.STRING);
+                case DOUBLE -> (kind == Kind.INT || kind == Kind.LONG || kind == Kind.DOUBLE) ? Kind.DOUBLE : Kind.STRING;
+                case STRING -> Kind.STRING;
+            };
+        }
+
+        if (common == null) {
+            return builder.defineList(key, new ArrayList<String>(), String.class);
+        }
+        return switch (common) {
+            case BOOLEAN -> builder.defineList(key, collect(array, Boolean::parseBoolean), Boolean.class);
+            case INT -> builder.defineList(key, collect(array, Integer::parseInt), Integer.class);
+            case LONG -> builder.defineList(key, collect(array, Long::parseLong), Long.class);
+            case DOUBLE -> builder.defineList(key, collect(array, Double::parseDouble), Double.class);
+            case STRING -> builder.defineList(key, collect(array, s -> s), String.class);
+        };
+    }
+
+    private static <T> List<T> collect(String[] array, java.util.function.Function<String, T> parser) {
+        List<T> list = new ArrayList<>(array.length);
+        for (String element: array) {
+            list.add(parser.apply(element));
+        }
+        return list;
+    }
+
+    private enum Kind { BOOLEAN, INT, LONG, DOUBLE, STRING }
+
+    // TYPE INFERENCE BY VALUE SHAPE: true/false, INTEGRAL, DECIMAL, ELSE STRING
+    private static Kind inferKind(String value) {
+        if (value.equals("true") || value.equals("false")) {
+            return Kind.BOOLEAN;
+        }
+        if (value.matches("[+-]?\\d+")) {
+            try {
+                long parsed = Long.parseLong(value);
+                return (parsed >= Integer.MIN_VALUE && parsed <= Integer.MAX_VALUE) ? Kind.INT : Kind.LONG;
+            } catch (NumberFormatException e) {
+                return Kind.STRING; // BEYOND LONG RANGE
+            }
+        }
+        if (value.matches("[+-]?(\\d+\\.\\d*|\\.\\d+|\\d+)([eE][+-]?\\d+)?") ) {
+            return Kind.DOUBLE;
+        }
+        return Kind.STRING;
+    }
+
+    /**
+     * Resolves the registered codec for the given type, boxing primitives.
+     *
+     * @return the codec, or null when none matches
+     */
+    public static ICodec<?> codecOf(Class<?> type) {
+        Class<?> boxed = toBoxed(type);
+        ICodec<?> codec = CODECS.get(boxed);
+        if (codec != null) {
+            return codec;
+        }
+
+        // SUBTYPE LOOKUPS (ENUMS, RECORDS, Path IMPLS) SCAN THE REGISTRY ONCE AND ARE CACHED
+        codec = CODEC_CACHE.get(boxed);
+        if (codec == null) {
+            for (ICodec<?> c: CODECS.values()) {
+                if (c.type().isAssignableFrom(boxed)) {
+                    CODEC_CACHE.put(boxed, c);
+                    return c;
+                }
+            }
+        }
+        return codec;
+    }
+
+    private static final Map<Class<?>, ICodec<?>> CODEC_CACHE = new ConcurrentHashMap<>();
+
     static String[] tryEncode(Object[] value, Class<?> type, Class<?> subType) {
         if (value instanceof String[] s) {
             return s;
         }
 
-        ICodec<Object> codec = (ICodec<Object>) CODECS.get(toBoxed(subType));
-
-        if (codec == null) {
-            for (ICodec<?> c: CODECS.values()) {
-                // SECOND ATTEMPT
-                if (c.type().isAssignableFrom(subType)) {
-                    codec = (ICodec<Object>) c;
-                    break;
-                }
-            }
+        // MIRRORS tryParse: List<String>.toArray() YIELDS Object[], COPY INTO String[]
+        if (subType == String.class) {
+            String[] result = new String[value.length];
+            System.arraycopy(value, 0, result, 0, value.length);
+            return result;
         }
 
+        ICodec<Object> codec = (ICodec<Object>) codecOf(subType);
         if (codec == null) {
             throw new IllegalArgumentException("Codec for type '" + value.getClass().getName() + "' was not founded");
         }
@@ -353,24 +730,7 @@ public class WaterConfig {
             return s;
         }
 
-        ICodec<Object> codec = (ICodec<Object>) CODECS.get(toBoxed(value.getClass()));
-
-        if (codec == null) {
-            for (ICodec<?> c: CODECS.values()) {
-                // FIRST ATTEMPT
-                if (c.type().isInstance(value)) {
-                    codec = (ICodec<Object>) c;
-                    break;
-                }
-
-                // SECOND ATTEMPT
-                if (c.type().isAssignableFrom(value.getClass())) {
-                    codec = (ICodec<Object>) c;
-                    break;
-                }
-            }
-        }
-
+        ICodec<Object> codec = (ICodec<Object>) codecOf(value.getClass());
         if (codec == null) {
             throw new IllegalArgumentException("Codec for type '" + value.getClass().getName() + "' was not founded");
         }
@@ -390,17 +750,7 @@ public class WaterConfig {
             return (T[]) value;
         }
 
-        ICodec<T> codec = (ICodec<T>) CODECS.get(toBoxed(subType));
-
-        if (codec == null) {
-            for (ICodec<?> c: CODECS.values()) {
-                if (c.type().isAssignableFrom(subType)) {
-                    codec = (ICodec<T>) c;
-                    break;
-                }
-            }
-        }
-
+        ICodec<T> codec = (ICodec<T>) codecOf(subType);
         if (codec == null)
             throw new IllegalArgumentException("Codec for type '" + type.getName() + "' with subType '" + subType.getName() + "' was not founded");
 
@@ -425,19 +775,7 @@ public class WaterConfig {
             return (T) value;
         }
 
-
-        ICodec<T> codec = (ICodec<T>) CODECS.get(toBoxed(type));
-
-
-        if (codec == null) {
-            for (ICodec<?> c: CODECS.values()) {
-                if (c.type().isAssignableFrom(type)) {
-                    codec = (ICodec<T>) c;
-                    break;
-                }
-            }
-        }
-
+        ICodec<T> codec = (ICodec<T>) codecOf(type);
         if (codec == null)
             throw new IllegalArgumentException("Codec for type '" + type.getName() + "' was not founded");
 
@@ -445,6 +783,62 @@ public class WaterConfig {
             return ((IComplexCodec<T, T2>) complexCodec).decode(value, type2);
         }
         return codec.decode(value);
+    }
+
+    // DECODES ONE VALUE TO type VIA ITS CODEC; ON FAILURE ATTEMPTS A REPAIR COERCION TO THAT TYPE.
+    // RETURNS null WHEN NEITHER THE CODEC NOR THE REPAIR CAN PRODUCE A VALUE.
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    static Object parseElement(String raw, Class<?> type) {
+        if (raw == null) return null;
+        if (type == String.class) return raw;
+
+        ICodec<?> codec = codecOf(type);
+        if (codec != null) {
+            try {
+                Object v = (codec instanceof IComplexCodec complex) ? complex.decode(raw, type) : codec.decode(raw);
+                if (v != null) return v;
+            } catch (Exception ignored) {
+                // CODEC REJECTED THE RAW VALUE — FALL THROUGH TO REPAIR
+            }
+        }
+        return coerce(raw, type);
+    }
+
+    // REPAIR COERCION: RECOVERS A CODEC-REJECTED VALUE BY CONVERTING IT TO THE TARGET TYPE.
+    // NUMERIC TARGETS ACCEPT DECIMAL/EXPONENT STRINGS (TRUNCATED TO FIT INTEGRALS), BOOLEAN
+    // TARGETS ACCEPT COMMON TRUTHY/FALSY SPELLINGS, STRING TARGETS TAKE ANYTHING VERBATIM.
+    private static Object coerce(String raw, Class<?> type) {
+        String s = raw.trim();
+        if (s.isEmpty()) return null;
+
+        if (type == String.class) return raw;
+
+        if (type == Boolean.class) {
+            return switch (s.toLowerCase(Locale.ROOT)) {
+                case "true", "1", "yes", "on", "y" -> Boolean.TRUE;
+                case "false", "0", "no", "off", "n" -> Boolean.FALSE;
+                default -> null;
+            };
+        }
+
+        if (type == Integer.class || type == Long.class || type == Short.class
+                || type == Byte.class || type == Double.class || type == Float.class) {
+            double d;
+            try {
+                d = Double.parseDouble(s);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+            if (type == Double.class) return d;
+            if (type == Float.class) return (float) d;
+            if (Double.isNaN(d) || Double.isInfinite(d)) return null;
+            long l = (long) d; // TRUNCATE TOWARD ZERO
+            if (type == Long.class) return l;
+            if (type == Integer.class) return (l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE) ? (int) l : null;
+            if (type == Short.class) return (l >= Short.MIN_VALUE && l <= Short.MAX_VALUE) ? (short) l : null;
+            return (l >= Byte.MIN_VALUE && l <= Byte.MAX_VALUE) ? (byte) l : null;
+        }
+        return null;
     }
 
     static void run() {
@@ -474,11 +868,11 @@ public class WaterConfig {
                     }
                 }
 
-                // Verificar pánico en cada tick, independiente de si algún spec slow necesitó trabajo
+                // CHECK PANIC EVERY TICK, INDEPENDENT OF WHETHER ANY SLOW SPEC NEEDED WORK
                 if (!OVERFLOW_ACTIVE.isEmpty()) {
                     checkPanic();
                 } else {
-                    overflowFullSince = 0; // overflow vacío — resetear reloj
+                    overflowFullSince = 0; // OVERFLOW EMPTY — RESET THE CLOCK
                 }
 
                 if (!PANIC) Thread.sleep(5000);
@@ -489,33 +883,33 @@ public class WaterConfig {
     }
 
     private static void doProcess(ConfigSpec spec) {
-        try {
+        synchronized (spec.ioLock) {
             if (spec.isDirty()) {
-                spec.save();
-                // Limpiar DESPUÉS de que save() haya tenido éxito
+                // SNAPSHOT-AND-CLEAR BEFORE SERIALIZING: A CONCURRENT set() RE-MARKS AND IS PICKED NEXT TICK
                 spec.dirty = false;
-                spec.dirtyFields().clear();
+                try {
+                    spec.save();
+                } catch (Exception e) {
+                    spec.dirty = true; // RETRY NEXT TICK
+                    System.err.println("[WaterConfig] Save failed for spec '" + spec.name() + "': " + e.getMessage());
+                }
             }
-        } catch (Exception e) {
-            // dirty sigue en true, dirtyFields intactos — retry natural en el siguiente tick
-            System.err.println("[WaterConfig] Save failed for spec '" + spec.name() + "': " + e.getMessage());
-        }
 
-        try {
             if (spec.isReload()) {
-                spec.load();
-                // Limpiar DESPUÉS de que load() haya tenido éxito
                 spec.reload = false;
+                try {
+                    spec.load();
+                } catch (Exception e) {
+                    spec.reload = true; // RETRY NEXT TICK
+                    System.err.println("[WaterConfig] Reload failed for spec '" + spec.name() + "': " + e.getMessage());
+                }
             }
-        } catch (Exception e) {
-            // reload sigue en true — retry natural en el siguiente tick
-            System.err.println("[WaterConfig] Reload failed for spec '" + spec.name() + "': " + e.getMessage());
         }
     }
 
     private static void overflowProcess(ConfigSpec spec) {
         if (OVERFLOW_ACTIVE.size() >= OVERFLOW_LIMIT) {
-            return; // lleno — el loop principal se encarga de verificar pánico
+            return; // FULL — THE MAIN LOOP HANDLES THE PANIC CHECK
         }
 
         OVERFLOW_ACTIVE.add(spec.name());
@@ -551,7 +945,7 @@ public class WaterConfig {
     private static void triggerPanic() {
         System.err.println("[WaterConfig] PANIC: I/O overflow saturated for 10s — emergency shutdown");
 
-        // Solo loguear qué se pierde — NO intentar save, el I/O está muerto
+        // ONLY LOG WHAT IS LOST — DO NOT ATTEMPT A SAVE, THE I/O IS DEAD
         for (ConfigSpec spec : LOOP_SPECS.values()) {
             if (spec.isDirty()) {
                 System.err.println("[WaterConfig] PANIC: spec '" + spec.name() + "' had unsaved changes (data lost)");
@@ -563,6 +957,26 @@ public class WaterConfig {
         LOOP_SPECS.clear();
     }
 
+    /**
+     * Unregisters every spec, discarding pending changes and waiting out in-flight saves.
+     * Intended for controlled teardown scenarios where nothing must touch the files afterwards.
+     */
+    public static void unloadAll() {
+        LOOP_SPECS.clear();
+        List<ConfigSpec> specs;
+        synchronized (SPECS) {
+            specs = List.copyOf(SPECS.values());
+            SPECS.clear();
+        }
+        // HOLDING EACH ioLock WAITS FOR ANY IN-FLIGHT SAVE BEFORE DISCARDING ITS DIRTY STATE
+        for (ConfigSpec spec: specs) {
+            synchronized (spec.ioLock) {
+                spec.dirty = false;
+                spec.reload = false;
+            }
+        }
+    }
+
     public static void unload(String name) {
         ConfigSpec spec;
         synchronized (SPECS) {
@@ -570,35 +984,59 @@ public class WaterConfig {
         }
         if (spec == null) return;
 
-        // Remover del loop — el worker ya no lo toca
+        // REMOVE FROM THE LOOP — THE WORKER NO LONGER TOUCHES IT
         LOOP_SPECS.remove(name);
 
-        // Save final en IO_POOL, pero esperar a que overflow termine primero si aplica
-        IO_POOL.submit(() -> {
-            try {
-                // Esperar a que el overflow termine con este spec (si está procesándolo)
-                // Polling simple con timeout — el overflow debería terminar eventualmente
-                long waitStart = System.nanoTime();
-                long maxWait = TimeUnit.SECONDS.toNanos(15); // 5s slow threshold + margen
-                while (OVERFLOW_ACTIVE.contains(name)) {
-                    if (System.nanoTime() - waitStart >= maxWait) {
-                        System.err.println("[WaterConfig] Timeout waiting for overflow to release spec '" + name + "' during unload");
-                        break;
-                    }
-                    Thread.sleep(100);
-                }
+        if (PANIC || SHUTDOWN) {
+            System.err.println("[WaterConfig] Skipping final save for '" + name + "': WaterConfig is shut down");
+            return;
+        }
 
-                if (spec.isDirty()) spec.save();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                System.err.println("[WaterConfig] Final save failed for '" + name + "': " + e.getMessage());
-            }
-        });
+        try {
+            // FINAL SAVE; THE PER-SPEC ioLock WAITS FOR ANY IN-FLIGHT OVERFLOW SAVE WITHOUT BUSY-WAITING
+            IO_POOL.submit(() -> {
+                try {
+                    synchronized (spec.ioLock) {
+                        if (spec.isDirty()) {
+                            spec.dirty = false;
+                            spec.save();
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("[WaterConfig] Final save failed for '" + name + "': " + e.getMessage());
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            System.err.println("[WaterConfig] Skipping final save for '" + name + "': WaterConfig is shut down");
+        }
     }
 
-    public static void init() {
-        if (RT_WORKER != null) return; // ya inicializado
+    // TRUE WHEN CONFIG FILES ARE LOCKED DOWN (SOFT OR HARD): RUNTIME RELOAD IS DISABLED
+    public static boolean isLockdown() {
+        return LOCKDOWN != WaterConfigConfig.Lockdown.OFF;
+    }
+
+    // APPLIES THE LOCKDOWN MODE FROM WaterConfigConfig. HARD IS NOT IMPLEMENTED YET (SEE HARD_LOCKDOWN.md)
+    static void applyLockdown(WaterConfigConfig.Lockdown mode) {
+        LOCKDOWN = (mode == null) ? WaterConfigConfig.Lockdown.OFF : mode;
+        if (LOCKDOWN == WaterConfigConfig.Lockdown.I_READ_THE_COMMENT_HARD) {
+            System.err.println("[WaterConfig] HARD lockdown is not implemented yet — applying SOFT (reload disabled). See HARD_LOCKDOWN.md");
+        }
+    }
+
+    // DOGFOOD BOOTSTRAP: THE FIRST registration BRINGS UP WaterConfig's OWN CONFIG AND APPLIES LOCKDOWN.
+    // LAZY (NOT IN init()) SO THE CONFIG PATH IS ALREADY SET BY THE TIME THE FIRST SPEC IS REGISTERED.
+    private static synchronized void ensureSelfConfig() {
+        if (selfConfigDone) {
+            return;
+        }
+        selfConfigDone = true; // SET FIRST SO THE WaterConfigConfig REGISTRATION BELOW DOES NOT RE-ENTER
+        registerBlocking(WaterConfigConfig.class);
+        applyLockdown(WaterConfigConfig.lockdownConfigFiles);
+    }
+
+    public static synchronized void init() {
+        if (RT_WORKER != null) return; // ALREADY INITIALIZED
         WaterConfigRegistry.init();
 
         RT_WORKER = new Thread(WaterConfig::run, "WaterConfig-Worker");
@@ -609,25 +1047,41 @@ public class WaterConfig {
     }
 
     static void shutdown() {
-        RT_WORKER.interrupt();
+        SHUTDOWN = true;
+
+        Thread worker = RT_WORKER;
+        if (worker != null) {
+            worker.interrupt();
+            try {
+                worker.join(3000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        // QUIESCE THE POOLS BEFORE THE FINAL SAVES SO DAEMON THREADS NEVER DIE MID-WRITE
+        IO_POOL.shutdown();
+        OVERFLOW_POOL.shutdown();
         try {
-            RT_WORKER.join(3000);
+            if (!IO_POOL.awaitTermination(5, TimeUnit.SECONDS)) IO_POOL.shutdownNow();
+            if (!OVERFLOW_POOL.awaitTermination(5, TimeUnit.SECONDS)) OVERFLOW_POOL.shutdownNow();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
 
         for (ConfigSpec spec : LOOP_SPECS.values()) {
-            if (spec.isDirty()) {
-                try {
-                    spec.save();
-                } catch (Exception e) {
-                    System.err.println("[WaterConfig] Shutdown save failed for '" + spec.name() + "': " + e.getMessage());
+            synchronized (spec.ioLock) {
+                if (spec.isDirty()) {
+                    spec.dirty = false;
+                    try {
+                        spec.save();
+                    } catch (Exception e) {
+                        System.err.println("[WaterConfig] Shutdown save failed for '" + spec.name() + "': " + e.getMessage());
+                    }
                 }
             }
         }
 
-        IO_POOL.shutdown();
-        OVERFLOW_POOL.shutdown();
         LOOP_SPECS.clear();
         synchronized (SPECS) {
             SPECS.clear();
