@@ -48,6 +48,24 @@ public abstract class CollectionField<T, S> extends BaseConfigField<T, S> {
         };
     }
 
+    // LAZILY INSTANTIATES THE CONFIGURED FILTER PREDICATE, CACHED AFTER THE FIRST USE
+    private Predicate<S> filterInstance;
+    protected Predicate<S> filterInstance() {
+        if (this.filter == null) {
+            return null;
+        }
+        if (this.filterInstance == null) {
+            try {
+                var constructor = this.filter.getDeclaredConstructor();
+                constructor.setAccessible(true);
+                this.filterInstance = constructor.newInstance();
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("Failed to instantiate filter '" + this.filter.getName() + "' for field '" + this.name() + "'", e);
+            }
+        }
+        return this.filterInstance;
+    }
+
     @Override
     public Class<S> subType() {
         return this.subType;

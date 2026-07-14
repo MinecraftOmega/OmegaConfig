@@ -14,16 +14,16 @@ public final class ByteField extends BaseNumberField<Byte> implements IntSupplie
 
     public ByteField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, byte min, byte max, Field field, Object context, Control control, String suffix) {
         super(name, group, comments, math, strictMath, field, context, control, suffix);
-        this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
+        this.primitive = this.defaultValue;
     }
 
     public ByteField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, byte min, byte max, Byte defaultValue, Control control, String suffix) {
         super(name, group, comments, math, strictMath, defaultValue, control, suffix);
-        this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
+        this.primitive = this.defaultValue;
     }
 
     @Override
@@ -31,25 +31,30 @@ public final class ByteField extends BaseNumberField<Byte> implements IntSupplie
         return Byte.class;
     }
 
+    // CACHES THE VALUE ON EVERY WRITE THROUGH THE FIELD API
     @Override
     public void accept(Byte value) {
-        super.accept(primitive = value);
+        super.accept(this.primitive = value);
+    }
+
+    // RE-SYNCS THE CACHE FROM THE FIELD (CATCHING REFLECT-MODE EXTERNAL MUTATIONS) AND VALIDATES
+    @Override
+    public void validate() {
+        byte value = this.get();
+        if (value < this.min || value > this.max) {
+            this.reset(); // RESET TO DEFAULT IF OUT OF BOUNDS
+            return;
+        }
+        this.primitive = value;
     }
 
     @Override
     public int getAsInt() {
-        return primitive;
+        return this.primitive;
     }
 
     public byte getAsByte() {
-        return primitive;
-    }
-
-    @Override
-    public void validate() {
-        if (this.primitive < this.min || this.primitive > this.max) {
-            this.reset(); // Reset to default if out of bounds
-        }
+        return this.primitive;
     }
 
     @Override

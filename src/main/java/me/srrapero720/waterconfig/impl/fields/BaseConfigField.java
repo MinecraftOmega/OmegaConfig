@@ -7,6 +7,7 @@ import me.srrapero720.waterconfig.api.Control;
 import me.srrapero720.waterconfig.api.IConfigField;
 
 import java.lang.reflect.Field;
+import java.util.Objects;
 import java.util.Set;
 
 public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
@@ -22,9 +23,12 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
     // FIELD
     private final Object context;
     private final Field field;
+    private String[] aliases = NO_ALIASES;
     private T value;
 
     protected BaseConfigField(String name, ConfigGroup group, Set<String> comments, Field field, Object context, Control control, String suffix) {
+        // ONE-TIME OVERRIDE: REMOVES THE CALLER-STACK ACCESS CHECK FROM EVERY REFLECTIVE GET/SET
+        field.setAccessible(true);
         this.name = name;
         this.group = group;
         this.comments = comments;
@@ -38,6 +42,9 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
     }
 
     protected BaseConfigField(String name, ConfigGroup group, Set<String> comments, T defaultValue, Control control, String suffix) {
+        if (defaultValue == null) {
+            throw new IllegalArgumentException("Field '" + name + "' requires a non-null default value");
+        }
         this.name = name;
         this.group = group;
         this.comments = comments;
@@ -70,9 +77,15 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
         return null;
     }
 
+    private String[] commentsArray;
+
     @Override
     public String[] comments() {
-        return comments.toArray(new String[0]);
+        // COMMENTS ARE FIXED AFTER BUILD: CACHE THE ARRAY INSTEAD OF COPYING PER SAVE
+        if (this.commentsArray == null) {
+            this.commentsArray = this.comments.toArray(new String[0]);
+        }
+        return this.commentsArray;
     }
 
     @Override
@@ -83,6 +96,18 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
     @Override
     public String suffix() {
         return this.suffix;
+    }
+
+    @Override
+    public String[] aliases() {
+        return this.aliases;
+    }
+
+    /**
+     * Internal: assigned once by the field builder.
+     */
+    public void aliases(String[] aliases) {
+        this.aliases = (aliases == null) ? NO_ALIASES : aliases;
     }
 
     // BUILDS THE EXCEPTION THROWN BY SUBCLASSES WHEN A CONTROL DOES NOT FIT THE FIELD
@@ -106,6 +131,10 @@ public abstract class BaseConfigField<T, S> implements IConfigField<T, S> {
 
     @Override
     public void accept(T t) {
+        // EQUALITY GUARD: A NO-OP SET MUST NOT MARK THE SPEC DIRTY NOR REWRITE THE FILE
+        if (Objects.equals(this.get(), t)) {
+            return;
+        }
         switch (this.mode) {
             case REFLECT -> Tools.setFieldValue(this.field, this.context, t);
             case NATIVE -> this.value = t;

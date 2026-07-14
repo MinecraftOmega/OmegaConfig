@@ -38,7 +38,8 @@ public final class EnumField<T extends Enum<T>> extends BaseConfigField<T, T> im
 
     @Override
     public Class<T> type() {
-        return (Class<T>) this.defaultValue.getClass();
+        // ENUM CONSTANTS WITH BODIES ARE ANONYMOUS SUBCLASSES: THE DECLARING CLASS IS THE REAL ENUM TYPE
+        return this.defaultValue.getDeclaringClass();
     }
 
     @Override

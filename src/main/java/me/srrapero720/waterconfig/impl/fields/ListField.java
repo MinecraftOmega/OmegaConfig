@@ -35,11 +35,16 @@ public final class ListField<T> extends CollectionField<List<T>, T> {
 
     @Override
     public void validate() {
+        // FILTER: DROP ENTRIES REJECTED BY THE CONFIGURED PREDICATE
+        Predicate<T> filter = this.filterInstance();
+        if (filter != null && !this.get().stream().allMatch(filter)) {
+            this.set(this.get().stream().filter(filter).collect(Collectors.toCollection(ArrayList::new)));
+        }
         if (this.get().isEmpty() && !this.allowEmpty) {
             this.reset();
             return;
         }
-        // FILTER
+        // DEDUPLICATE
         if (this.unique && this.get().size() != this.get().stream().distinct().count()) {
             this.set(this.get().stream().distinct().collect(Collectors.toCollection(ArrayList::new)));
             return;

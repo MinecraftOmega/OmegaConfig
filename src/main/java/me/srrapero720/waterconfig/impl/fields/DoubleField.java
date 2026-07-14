@@ -14,16 +14,16 @@ public final class DoubleField extends BaseNumberField<Double> implements Double
 
     public DoubleField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, double min, double max, Field field, Object context, Control control, String suffix) {
         super(name, group, comments, math, strictMath, field, context, control, suffix);
-        this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
+        this.primitive = this.defaultValue;
     }
 
     public DoubleField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, double min, double max, Double defaultValue, Control control, String suffix) {
         super(name, group, comments, math, strictMath, defaultValue, control, suffix);
-        this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
+        this.primitive = this.defaultValue;
     }
 
     @Override
@@ -31,21 +31,26 @@ public final class DoubleField extends BaseNumberField<Double> implements Double
         return Double.class;
     }
 
-    @Override
-    public void validate() {
-        if (this.primitive < this.min || this.primitive > this.max) {
-            this.reset();
-        }
-    }
-
+    // CACHES THE VALUE ON EVERY WRITE THROUGH THE FIELD API
     @Override
     public void accept(Double value) {
-        super.accept(primitive = value);
+        super.accept(this.primitive = value);
+    }
+
+    // RE-SYNCS THE CACHE FROM THE FIELD (CATCHING REFLECT-MODE EXTERNAL MUTATIONS) AND VALIDATES
+    @Override
+    public void validate() {
+        double value = this.get();
+        if (value < this.min || value > this.max) {
+            this.reset();
+            return;
+        }
+        this.primitive = value;
     }
 
     @Override
     public double getAsDouble() {
-        return primitive;
+        return this.primitive;
     }
 
     @Override

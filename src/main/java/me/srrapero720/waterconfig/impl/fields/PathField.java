@@ -10,17 +10,20 @@ import java.util.Set;
 public class PathField extends BaseConfigField<Path, Void> {
     public final boolean runtimePath;
     public final boolean fileExists;
+    public final boolean hardfail;
 
-    public PathField(String name, ConfigGroup group, Set<String> comments, boolean runtimePath, boolean fileExists, Path defaultValue, Control control, String suffix) {
+    public PathField(String name, ConfigGroup group, Set<String> comments, boolean runtimePath, boolean fileExists, boolean hardfail, Path defaultValue, Control control, String suffix) {
         super(name, group, comments, defaultValue, coherent(name, control), suffix);
         this.runtimePath = runtimePath;
         this.fileExists = fileExists;
+        this.hardfail = hardfail;
     }
 
-    public PathField(String name, ConfigGroup group, Set<String> comments, boolean runtimePath, boolean fileExists, Field field, Object context, Control control, String suffix) {
+    public PathField(String name, ConfigGroup group, Set<String> comments, boolean runtimePath, boolean fileExists, boolean hardfail, Field field, Object context, Control control, String suffix) {
         super(name, group, comments, field, context, coherent(name, control), suffix);
         this.runtimePath = runtimePath;
         this.fileExists = fileExists;
+        this.hardfail = hardfail;
     }
 
     private static Control coherent(String name, Control control) {
@@ -40,12 +43,15 @@ public class PathField extends BaseConfigField<Path, Void> {
 
     @Override
     public void validate() {
-        if (this.fileExists && !this.get().toFile().exists()) {
-            this.reset();
+        Path value = this.get();
+        boolean invalid = (this.fileExists && !value.toFile().exists()) || (this.runtimePath && value.isAbsolute());
+        if (!invalid) {
+            return;
         }
-
-        if (this.runtimePath && this.get().toFile().isAbsolute()) {
-            this.reset();
+        // HARD FAIL THROWS ABOUT THE WRONG CONFIG VALUE; SOFT FAIL RESETS TO DEFAULT
+        if (this.hardfail) {
+            throw new IllegalStateException("Path field '" + this.id() + "' failed validation with value '" + value + "'");
         }
+        this.reset();
     }
 }

@@ -114,13 +114,18 @@ public class ArrayField<T> extends CollectionField<T[], T> {
 
     @Override
     public void validate() {
+        // FILTER: DROP ENTRIES REJECTED BY THE CONFIGURED PREDICATE
+        Predicate<T> filter = this.filterInstance();
+        if (filter != null && this.get() != null && !Arrays.stream(this.get()).allMatch(filter)) {
+            this.set(Arrays.stream(this.get()).filter(filter).toArray(size -> (T[]) Array.newInstance(this.subType, size)));
+        }
         if (this.get() == null || this.get().length == 0) {
             if (!this.allowEmpty) {
                 this.reset();
             }
             return;
         }
-        // FILTER
+        // DEDUPLICATE
         if (this.unique && this.get().length != Arrays.stream(this.get()).distinct().count()) {
             T[] distinctArray = Arrays.stream(this.get()).distinct().toArray(size -> (T[]) Array.newInstance(this.subType, size));
             this.set(distinctArray);

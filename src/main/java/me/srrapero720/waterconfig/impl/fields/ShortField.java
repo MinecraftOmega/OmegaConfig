@@ -14,16 +14,16 @@ public final class ShortField extends BaseNumberField<Short> implements IntSuppl
 
     public ShortField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, short min, short max, Field field, Object context, Control control, String suffix) {
         super(name, group, comments, math, strictMath, field, context, control, suffix);
-        this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
+        this.primitive = this.defaultValue;
     }
 
     public ShortField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, short min, short max, Short defaultValue, Control control, String suffix) {
         super(name, group, comments, math, strictMath, defaultValue, control, suffix);
-        this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
+        this.primitive = this.defaultValue;
     }
 
     @Override
@@ -31,25 +31,30 @@ public final class ShortField extends BaseNumberField<Short> implements IntSuppl
         return Short.class;
     }
 
-    @Override
-    public void validate() {
-        if (this.primitive < this.min || this.primitive > this.max) {
-            this.reset(); // Reset to default if out of bounds
-        }
-    }
-
+    // CACHES THE VALUE ON EVERY WRITE THROUGH THE FIELD API
     @Override
     public void accept(Short value) {
-        super.accept(primitive = value);
+        super.accept(this.primitive = value);
+    }
+
+    // RE-SYNCS THE CACHE FROM THE FIELD (CATCHING REFLECT-MODE EXTERNAL MUTATIONS) AND VALIDATES
+    @Override
+    public void validate() {
+        short value = this.get();
+        if (value < this.min || value > this.max) {
+            this.reset(); // RESET TO DEFAULT IF OUT OF BOUNDS
+            return;
+        }
+        this.primitive = value;
     }
 
     @Override
     public int getAsInt() {
-        return primitive;
+        return this.primitive;
     }
 
     public short getAsShort() {
-        return primitive;
+        return this.primitive;
     }
 
     @Override
@@ -58,7 +63,6 @@ public final class ShortField extends BaseNumberField<Short> implements IntSuppl
     }
 
     @Override
-
     public String maxValueString() {
         return this.max == Short.MAX_VALUE ? null : String.valueOf(max);
     }

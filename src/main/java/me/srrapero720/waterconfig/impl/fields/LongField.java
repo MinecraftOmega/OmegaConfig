@@ -14,16 +14,16 @@ public final class LongField extends BaseNumberField<Long> implements LongSuppli
 
     public LongField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, long min, long max, Field field, Object context, Control control, String suffix) {
         super(name, group, comments, math, strictMath, field, context, control, suffix);
-        this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
+        this.primitive = this.defaultValue;
     }
 
     public LongField(String name, ConfigGroup group, Set<String> comments, boolean math, boolean strictMath, long min, long max, Long defaultValue, Control control, String suffix) {
         super(name, group, comments, math, strictMath, defaultValue, control, suffix);
-        this.primitive = this.defaultValue;
         this.min = min;
         this.max = max;
+        this.primitive = this.defaultValue;
     }
 
     @Override
@@ -31,21 +31,26 @@ public final class LongField extends BaseNumberField<Long> implements LongSuppli
         return Long.class;
     }
 
-    @Override
-    public void validate() {
-        if (this.primitive < this.min || this.primitive > this.max) {
-            this.reset(); // Reset to default if out of bounds
-        }
-    }
-
+    // CACHES THE VALUE ON EVERY WRITE THROUGH THE FIELD API
     @Override
     public void accept(Long value) {
-        super.accept(primitive = value);
+        super.accept(this.primitive = value);
+    }
+
+    // RE-SYNCS THE CACHE FROM THE FIELD (CATCHING REFLECT-MODE EXTERNAL MUTATIONS) AND VALIDATES
+    @Override
+    public void validate() {
+        long value = this.get();
+        if (value < this.min || value > this.max) {
+            this.reset(); // RESET TO DEFAULT IF OUT OF BOUNDS
+            return;
+        }
+        this.primitive = value;
     }
 
     @Override
     public long getAsLong() {
-        return primitive;
+        return this.primitive;
     }
 
     @Override

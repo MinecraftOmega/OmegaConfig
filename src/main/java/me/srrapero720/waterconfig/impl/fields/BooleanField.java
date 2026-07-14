@@ -33,18 +33,20 @@ public final class BooleanField extends BaseConfigField<Boolean, Void> implement
         return Boolean.class;
     }
 
+    // CACHES THE VALUE ON EVERY WRITE THROUGH THE FIELD API
     @Override
-    public void validate() {
-        // No validation needed for boolean fields
+    public void accept(Boolean value) {
+        super.accept(this.primitive = value);
     }
 
+    // NO BOUNDS TO CHECK; RE-SYNCS THE CACHE FROM THE FIELD (CATCHING REFLECT-MODE MUTATIONS)
     @Override
-    public void accept(Boolean aBoolean) {
-        super.accept(primitive = aBoolean);
+    public void validate() {
+        this.primitive = this.get();
     }
 
     @Override
     public boolean getAsBoolean() {
-        return primitive;
+        return this.primitive;
     }
 }
