@@ -3,6 +3,7 @@ package me.srrapero720.waterconfig;
 import me.srrapero720.waterconfig.api.Control;
 import me.srrapero720.waterconfig.api.IConfigField;
 import me.srrapero720.waterconfig.api.annotations.Spec;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,11 @@ public class ControlsTest {
     static void setup() {
         WaterConfig.init();
         WaterConfig.setPath(tempDir);
+    }
+    @AfterAll
+    static void teardown() {
+        // DROP EVERY REGISTERED SPEC SO THE WORKER NEVER WRITES INTO THE DELETED TEMP DIR
+        WaterConfig.unloadAll();
     }
 
     enum Sample { A, B, C }

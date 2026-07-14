@@ -29,6 +29,11 @@ public class SpecTest {
         WaterConfig.init();
         WaterConfig.setPath(tempDir);
     }
+    @AfterAll
+    static void teardown() {
+        // DROP EVERY REGISTERED SPEC SO THE WORKER NEVER WRITES INTO THE DELETED TEMP DIR
+        WaterConfig.unloadAll();
+    }
 
     // ========================================================================
     // Builder Spec Tests (NATIVE mode)
