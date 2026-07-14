@@ -104,5 +104,13 @@ public @interface Spec {
          * @throws IllegalArgumentException when the control is incoherent with the field type (e.g. checkbox for an int range)
          */
         Control control() default Control.DEFAULT;
+
+        /**
+         * Former names of this field. On load, when the current name is missing from the
+         * file, aliases are tried in order so renamed fields pick up values from old files.
+         *
+         * @return former field names, empty by default
+         */
+        String[] aliases() default {};
     }
 }

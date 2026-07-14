@@ -82,9 +82,9 @@ public @interface NumberConditions {
 
     /**
      * Minimal allowed value
-     * @return double value, {@link Double#MIN_VALUE} by default.
+     * @return double value, {@code -Double.MAX_VALUE} (the lowest finite double) by default.
      */
-    double minDouble() default Double.MIN_VALUE;
+    double minDouble() default -Double.MAX_VALUE;
 
     /**
      * Maximum allowed value
@@ -94,9 +94,9 @@ public @interface NumberConditions {
 
     /**
      * Minimal allowed value
-     * @return float value, {@link Float#MIN_VALUE} by default.
+     * @return float value, {@code -Float.MAX_VALUE} (the lowest finite float) by default.
      */
-    float minFloat() default Float.MIN_VALUE;
+    float minFloat() default -Float.MAX_VALUE;
 
     /**
      * Maximum allowed value
