@@ -1,26 +1,34 @@
 package me.srrapero720.waterconfig.impl.formats;
 
 import me.srrapero720.waterconfig.WaterConfig;
-import me.srrapero720.waterconfig.Tools;
-import me.srrapero720.waterconfig.api.formats.IFormatCodec;
 import me.srrapero720.waterconfig.api.formats.IFormatReader;
 import me.srrapero720.waterconfig.api.formats.IFormatWriter;
 
 import java.io.BufferedWriter;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.Iterator;
+import java.util.List;
+import java.util.regex.Pattern;
 
-public class TOMLFormat implements IFormatCodec {
+public class TOMLFormat extends BaseFormat {
     @Override public String id() { return WaterConfig.FORMAT_TOML; }
     @Override public String extension() { return "." + this.id(); }
     @Override public String mimeType() { return "text/toml"; }
 
     @Override
     public IFormatReader createReader(Path filePath) throws IOException {
-        return new FormatReader(filePath);
+        return new FormatReader(filePath, ParseMode.STRICT);
+    }
+
+    @Override
+    public IFormatReader createReader(Path filePath, ParseMode mode) throws IOException {
+        return new FormatReader(filePath, mode);
     }
 
     @Override
@@ -29,19 +37,18 @@ public class TOMLFormat implements IFormatCodec {
     }
 
     public static class FormatWriter implements IFormatWriter {
-        private final Stack<String> group = new Stack<>();
+        private final Deque<String> group = new ArrayDeque<>();
         private final BufferedWriter writer;
-        private final StringBuilder buffer = new StringBuilder();
+        // ROOT SCALARS ARE BUFFERED APART: TOML REQUIRES ROOT KEYS BEFORE ANY [table]
+        private final StringBuilder root = new StringBuilder();
+        private final StringBuilder tables = new StringBuilder();
         private final List<String> comments = new ArrayList<>();
         private String currentTable = "";
         private boolean tableHeaderWritten = false;
         private boolean firstInSection = true;
 
         public FormatWriter(Path path) throws IOException {
-            if (!path.toFile().getParentFile().exists() && !path.toFile().getParentFile().mkdirs()) {
-                throw new IOException("Failed to create parent directories for " + path);
-            }
-            this.writer = new BufferedWriter(new FileWriter(path.toFile(), StandardCharsets.UTF_8));
+            this.writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8);
         }
 
         @Override
@@ -51,176 +58,165 @@ public class TOMLFormat implements IFormatCodec {
 
         @Override
         public void write(String fieldName, String value, Class<?> type, Class<?> subType) {
-            ensureTableHeader();
+            StringBuilder target = ensureTableHeader();
             String indent = indent();
 
-            // Add blank line before comments for readability
             if (!firstInSection && !this.comments.isEmpty()) {
-                this.buffer.append("\n");
+                target.append('\n');
             }
-
-            // Write comments
-            for (String comment : this.comments) {
-                this.buffer.append(indent).append("# ").append(comment).append("\n");
+            for (String comment: this.comments) {
+                target.append(indent).append("# ").append(comment).append('\n');
             }
             this.comments.clear();
 
-            // Write key = value
-            this.buffer.append(indent).append(escapeKey(fieldName)).append(" = ");
-            this.buffer.append(formatValue(value, type));
-            this.buffer.append("\n");
+            target.append(indent).append(escapeKey(fieldName)).append(" = ");
+            target.append(formatValue(value, type));
+            target.append('\n');
             this.firstInSection = false;
         }
 
         @Override
         public void write(String fieldName, String[] values, Class<?> type, Class<?> subType) {
-            ensureTableHeader();
+            StringBuilder target = ensureTableHeader();
             String indent = indent();
 
-            // Add blank line before comments for readability
             if (!firstInSection && !this.comments.isEmpty()) {
-                this.buffer.append("\n");
+                target.append('\n');
             }
-
-            // Write comments
             for (String comment: this.comments) {
-                this.buffer.append(indent).append("# ").append(comment).append("\n");
+                target.append(indent).append("# ").append(comment).append('\n');
             }
             this.comments.clear();
 
-            // Write array
-            this.buffer.append(indent).append(escapeKey(fieldName)).append(" = [");
-
+            target.append(indent).append(escapeKey(fieldName)).append(" = [");
             if (values.length > 0) {
-                this.buffer.append("\n");
+                target.append('\n');
                 for (int i = 0; i < values.length; i++) {
-                    this.buffer.append(indent).append("  ").append(formatValue(values[i], subType));
+                    target.append(indent).append("  ").append(formatValue(values[i], subType));
                     if (i < values.length - 1) {
-                        this.buffer.append(",");
+                        target.append(',');
                     }
-                    this.buffer.append("\n");
+                    target.append('\n');
                 }
+                target.append(indent);
             }
-
-            this.buffer.append(indent).append("]\n");
+            target.append("]\n");
+            this.firstInSection = false;
         }
 
         @Override
         public void push(String groupName) {
-            // Root push is transparent — matches JSON5/CFG behavior where the
-            // spec name is not part of the file structure
-            if (this.group.isEmpty()) {
-                this.group.push(groupName);
-                return;
-            }
-            this.group.push(groupName);
+            // ROOT PUSH IS TRANSPARENT: THE SPEC NAME IS NOT PART OF THE FILE STRUCTURE
+            this.group.addLast(groupName);
             this.tableHeaderWritten = false;
         }
 
         @Override
         public void pop() {
-            if (this.group.isEmpty()) return;
-            this.group.pop();
+            this.group.pollLast();
             this.tableHeaderWritten = false;
         }
 
         @Override
         public void close() throws IOException {
-            this.writer.write(this.buffer.toString());
+            this.writer.write(this.root.toString());
+            if (!this.tables.isEmpty()) {
+                this.writer.write("\n");
+                this.writer.write(this.tables.toString());
+            }
             this.writer.flush();
             this.writer.close();
         }
 
-        private void ensureTableHeader() {
+        // PICKS THE TARGET BUFFER AND EMITS THE [table] HEADER WHEN ENTERING A TABLE
+        private StringBuilder ensureTableHeader() {
             String tableName = buildTableName();
-            if (!tableName.equals(currentTable) || !tableHeaderWritten) {
-                if (!buffer.isEmpty()) {
-                    buffer.append("\n");
-                }
-                if (!tableName.isEmpty()) {
-                    buffer.append("[").append(tableName).append("]\n");
-                } else if (!currentTable.isEmpty()) {
-                    // Returning to root after a section — emit [] reset marker
-                    buffer.append("[]\n");
-                }
-                currentTable = tableName;
-                tableHeaderWritten = true;
-                firstInSection = true;
+            if (tableName.isEmpty()) {
+                this.currentTable = "";
+                return this.root;
             }
+            if (!tableName.equals(this.currentTable) || !this.tableHeaderWritten) {
+                if (!this.tables.isEmpty()) {
+                    this.tables.append('\n');
+                }
+                this.tables.append('[').append(tableName).append("]\n");
+                this.currentTable = tableName;
+                this.tableHeaderWritten = true;
+                this.firstInSection = true;
+            }
+            return this.tables;
         }
 
+        // DOTTED TABLE NAME WITHOUT THE TRANSPARENT ROOT ELEMENT
         private String buildTableName() {
-            // Skip root element (spec name) — it's transparent
-            if (group.size() <= 1) {
+            if (this.group.size() <= 1) {
                 return "";
             }
             StringBuilder sb = new StringBuilder();
-            Iterator<String> it = group.iterator();
-            it.next(); // skip root
+            Iterator<String> it = this.group.iterator();
+            it.next(); // SKIP ROOT
             while (it.hasNext()) {
                 sb.append(escapeKey(it.next()));
                 if (it.hasNext()) {
-                    sb.append(".");
+                    sb.append('.');
                 }
             }
             return sb.toString();
         }
 
         private String indent() {
-            int level = Math.max(0, group.size() - 1);
-            return "  ".repeat(level);
+            return pads(Math.max(0, this.group.size() - 1));
         }
 
-        private String escapeKey(String key) {
-            // Simple keys don't need quotes
-            if (key.matches("[A-Za-z0-9_-]+")) {
+        private static final Pattern SIMPLE_KEY = Pattern.compile("[A-Za-z0-9_-]+");
+
+        private static String escapeKey(String key) {
+            // SIMPLE KEYS NEED NO QUOTES
+            if (SIMPLE_KEY.matcher(key).matches()) {
                 return key;
             }
-            // Quote and escape if needed
-            return "\"" + key.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+            return "\"" + escape(key) + "\"";
         }
 
-        private String formatValue(String value, Class<?> type) {
+        private static String formatValue(String value, Class<?> type) {
             if (type == null) {
-                return "\"" + escapeString(value) + "\"";
+                return "\"" + escape(value) + "\"";
             }
 
-            // Boolean
             if (Boolean.class.isAssignableFrom(type) || boolean.class.isAssignableFrom(type)) {
                 return value.toLowerCase();
             }
 
-            // Numbers
+            // TOML SPELLS SPECIAL FLOATS AS nan/inf
+            if (Float.class == type || Double.class == type || float.class == type || double.class == type) {
+                return switch (value) {
+                    case "NaN" -> "nan";
+                    case "Infinity" -> "inf";
+                    case "-Infinity" -> "-inf";
+                    default -> value;
+                };
+            }
+
             if (Number.class.isAssignableFrom(type) ||
                 int.class.isAssignableFrom(type) ||
                 long.class.isAssignableFrom(type) ||
-                double.class.isAssignableFrom(type) ||
-                float.class.isAssignableFrom(type)) {
+                byte.class.isAssignableFrom(type) ||
+                short.class.isAssignableFrom(type)) {
                 return value;
             }
 
-            // String (default)
-            return "\"" + escapeString(value) + "\"";
-        }
-
-        private String escapeString(String str) {
-            return str.replace("\\", "\\\\")
-                     .replace("\"", "\\\"")
-                     .replace("\n", "\\n")
-                     .replace("\r", "\\r")
-                     .replace("\t", "\\t")
-                     .replace("\b", "\\b")
-                     .replace("\f", "\\f");
+            return "\"" + escape(value) + "\"";
         }
     }
 
-    public static class FormatReader implements IFormatReader {
-        private final LinkedHashMap<String, Object> values = new LinkedHashMap<>();
-        private final Stack<String> group = new Stack<>();
+    public static class FormatReader extends BaseFormatReader {
+        private final boolean repair;
+        private final List<String> pending = new ArrayList<>();
         private String currentTable = "";
 
-        public FormatReader(Path path) throws IOException {
-            char[] data = new String(Tools.readAllBytes(path), StandardCharsets.UTF_8).toCharArray();
+        public FormatReader(Path path, ParseMode mode) throws IOException {
+            this.repair = mode == ParseMode.REPAIR;
+            char[] data = read(path);
             parseToml(data);
         }
 
@@ -231,27 +227,39 @@ public class TOMLFormat implements IFormatCodec {
             while (i < len) {
                 char c = data[i];
 
-                // Skip whitespace
                 if (Character.isWhitespace(c)) {
                     i++;
                     continue;
                 }
 
-                // Skip comments
+                // LINE-LEADING COMMENTS ATTACH TO THE NEXT ENTRY
                 if (c == '#') {
-                    i = skipToEndOfLine(data, i);
+                    int start = i + 1;
+                    while (i < len && data[i] != '\n') i++;
+                    pending.add(new String(data, start, i - start).trim());
                     continue;
                 }
 
-                // Table header
+                // REPAIR MODE RESYNCS BY SKIPPING THE BROKEN LINE
                 if (c == '[') {
-                    i = parseTableHeader(data, i);
+                    try {
+                        i = parseTableHeader(data, i);
+                    } catch (IOException e) {
+                        if (!repair) throw e;
+                        report.add(new RepairEntry(lineOf(data, i), e.getMessage(), "line skipped"));
+                        i = skipLineRaw(data, i);
+                    }
                     continue;
                 }
 
-                // Key-value pair
                 if (isKeyStart(c)) {
-                    i = parseKeyValue(data, i);
+                    try {
+                        i = parseKeyValue(data, i);
+                    } catch (IOException e) {
+                        if (!repair) throw e;
+                        report.add(new RepairEntry(lineOf(data, i), e.getMessage(), "line skipped"));
+                        i = skipLineRaw(data, i);
+                    }
                     continue;
                 }
 
@@ -259,23 +267,27 @@ public class TOMLFormat implements IFormatCodec {
             }
         }
 
+        // ALWAYS-ADVANCING RAW SKIP PAST THE NEXT LINE BREAK
+        private static int skipLineRaw(char[] data, int i) {
+            while (i < data.length && data[i] != '\n') i++;
+            return i < data.length ? i + 1 : i;
+        }
+
         private int parseTableHeader(char[] data, int start) throws IOException {
             int i = start + 1;
             int len = data.length;
 
-            // Check for array of tables [[...]]
+            // ARRAY OF TABLES [[...]]
             boolean isArray = false;
             if (i < len && data[i] == '[') {
                 isArray = true;
                 i++;
             }
 
-            // Skip whitespace
             while (i < len && Character.isWhitespace(data[i])) {
                 i++;
             }
 
-            // Parse table name
             StringBuilder tableName = new StringBuilder();
             while (i < len && data[i] != ']') {
                 if (data[i] == '#') {
@@ -289,8 +301,7 @@ public class TOMLFormat implements IFormatCodec {
                 throw new IOException("Unclosed table header");
             }
 
-            // Skip closing bracket
-            i++;
+            i++; // SKIP CLOSING BRACKET
             if (isArray) {
                 if (i >= len || data[i] != ']') {
                     throw new IOException("Expected ]] for array of tables");
@@ -299,39 +310,50 @@ public class TOMLFormat implements IFormatCodec {
             }
 
             currentTable = tableName.toString().trim();
-
-            // Skip to end of line
+            attachPending(currentTable);
             return skipToEndOfLine(data, i);
+        }
+
+        // COMMENTS SEEN ABOVE THE UPCOMING ENTRY ATTACH TO ITS DOTTED KEY
+        private void attachPending(String key) {
+            if (!pending.isEmpty()) {
+                comments.put(key, List.copyOf(pending));
+                pending.clear();
+            }
         }
 
         private int parseKeyValue(char[] data, int start) throws IOException {
             int i = start;
             int len = data.length;
 
-            // Parse key
+            // KEY, WITH DOTTED-KEY SUPPORT (a.b.c = 1)
             StringBuilder key = new StringBuilder();
             i = parseKey(data, i, key);
+            while (true) {
+                int j = i;
+                while (j < len && (data[j] == ' ' || data[j] == '\t')) j++;
+                if (j >= len || data[j] != '.') break;
+                j++;
+                while (j < len && (data[j] == ' ' || data[j] == '\t')) j++;
+                key.append('.');
+                i = parseKey(data, j, key);
+            }
 
-            // Skip whitespace
             while (i < len && Character.isWhitespace(data[i])) {
                 i++;
             }
 
-            // Expect '='
             if (i >= len || data[i] != '=') {
                 throw new IOException("Expected '=' after key");
             }
 
-            // Skip whitespace
             do {
                 i++;
             } while (i < len && Character.isWhitespace(data[i]));
 
-            // Parse value
             String fullKey = buildFullKey(key.toString());
-            i = parseValue(data, i, fullKey);
-
-            return i;
+            attachPending(fullKey);
+            return parseValue(data, i, fullKey);
         }
 
         private int parseKey(char[] data, int start, StringBuilder key) throws IOException {
@@ -339,25 +361,23 @@ public class TOMLFormat implements IFormatCodec {
             int len = data.length;
             char c = data[i];
 
-            // Quoted key
             if (c == '"' || c == '\'') {
                 char quote = c;
                 i++;
                 while (i < len && data[i] != quote) {
-                    if (data[i] == '\\' && i + 1 < len) {
-                        i++;
-                        key.append(unescapeChar(data[i]));
+                    // BASIC (") KEYS DECODE ESCAPES; LITERAL (') KEYS ARE VERBATIM
+                    if (quote == '"' && data[i] == '\\' && i + 1 < len) {
+                        i = unescape(data, i + 1, key, true);
                     } else {
                         key.append(data[i]);
+                        i++;
                     }
-                    i++;
                 }
                 if (i >= len) {
                     throw new IOException("Unclosed quoted key");
                 }
-                i++; // Skip closing quote
+                i++; // SKIP CLOSING QUOTE
             } else {
-                // Bare key
                 while (i < len && (Character.isLetterOrDigit(data[i]) || data[i] == '_' || data[i] == '-')) {
                     key.append(data[i]);
                     i++;
@@ -368,26 +388,18 @@ public class TOMLFormat implements IFormatCodec {
         }
 
         private int parseValue(char[] data, int start, String key) throws IOException {
-            int i = start;
-            char c = data[i];
+            char c = data[start];
 
-            // String
             if (c == '"' || c == '\'') {
-                return parseString(data, i, key);
+                return parseString(data, start, key);
             }
-
-            // Array
             if (c == '[') {
-                return parseArray(data, i, key);
+                return parseArray(data, start, key);
             }
-
-            // Inline table
             if (c == '{') {
-                return parseInlineTable(data, i, key);
+                return parseInlineTable(data, start, key);
             }
-
-            // Boolean, number, or datetime
-            return parseLiteral(data, i, key);
+            return parseLiteral(data, start, key);
         }
 
         private int parseString(char[] data, int start, String key) throws IOException {
@@ -396,7 +408,7 @@ public class TOMLFormat implements IFormatCodec {
             char quote = data[i];
             i++;
 
-            // Check for multi-line string
+            // MULTI-LINE STRING (TRIPLE QUOTES)
             if (i + 1 < len && data[i] == quote && data[i + 1] == quote) {
                 i += 2;
                 return parseMultilineString(data, i, key, quote);
@@ -404,22 +416,22 @@ public class TOMLFormat implements IFormatCodec {
 
             StringBuilder value = new StringBuilder();
             while (i < len && data[i] != quote) {
-                if (data[i] == '\\' && i + 1 < len) {
-                    i++;
-                    value.append(unescapeChar(data[i]));
+                // BASIC (") STRINGS DECODE ESCAPES; LITERAL (') STRINGS ARE VERBATIM
+                if (quote == '"' && data[i] == '\\' && i + 1 < len) {
+                    i = unescape(data, i + 1, value, true);
                 } else if (data[i] == '\n') {
                     throw new IOException("Newline not allowed in single-line string");
                 } else {
                     value.append(data[i]);
+                    i++;
                 }
-                i++;
             }
 
             if (i >= len) {
                 throw new IOException("Unclosed string");
             }
 
-            i++; // Skip closing quote
+            i++; // SKIP CLOSING QUOTE
             values.put(key, value.toString());
             return skipToEndOfLine(data, i);
         }
@@ -429,7 +441,7 @@ public class TOMLFormat implements IFormatCodec {
             int len = data.length;
             StringBuilder value = new StringBuilder();
 
-            // Skip newline immediately after opening quotes
+            // NEWLINE RIGHT AFTER THE OPENING DELIMITER IS TRIMMED
             if (i < len && data[i] == '\n') {
                 i++;
             }
@@ -444,17 +456,17 @@ public class TOMLFormat implements IFormatCodec {
                 if (quote == '"' && data[i] == '\\' && i + 1 < len) {
                     i++;
                     if (data[i] == '\n' || (data[i] == '\r' && i + 1 < len && data[i + 1] == '\n')) {
-                        // Line ending backslash - trim whitespace
+                        // LINE-ENDING BACKSLASH TRIMS THE NEWLINE AND FOLLOWING WHITESPACE
                         while (i < len && Character.isWhitespace(data[i])) {
                             i++;
                         }
                         continue;
                     }
-                    value.append(unescapeChar(data[i]));
+                    i = unescape(data, i, value, true);
                 } else {
                     value.append(data[i]);
+                    i++;
                 }
-                i++;
             }
 
             throw new IOException("Unclosed multi-line string");
@@ -466,8 +478,7 @@ public class TOMLFormat implements IFormatCodec {
             List<String> array = new ArrayList<>();
 
             while (i < len) {
-                // Skip whitespace and newlines
-                while (i < len && (Character.isWhitespace(data[i]) || data[i] == '\n')) {
+                while (i < len && Character.isWhitespace(data[i])) {
                     i++;
                 }
 
@@ -475,30 +486,33 @@ public class TOMLFormat implements IFormatCodec {
                     throw new IOException("Unclosed array");
                 }
 
-                // Check for end of array
                 if (data[i] == ']') {
                     i++;
                     values.put(key, array.toArray(new String[0]));
                     return skipToEndOfLine(data, i);
                 }
 
-                // Skip comments
                 if (data[i] == '#') {
                     i = skipToEndOfLine(data, i);
                     continue;
                 }
 
-                // Parse array element
                 StringBuilder element = new StringBuilder();
                 i = parseArrayElement(data, i, element);
                 array.add(element.toString());
 
-                // Skip whitespace
-                while (i < len && (Character.isWhitespace(data[i]) || data[i] == '\n')) {
+                while (i < len && Character.isWhitespace(data[i])) {
                     i++;
                 }
 
-                // Check for comma
+                // INLINE COMMENT AFTER AN ELEMENT
+                if (i < len && data[i] == '#') {
+                    i = skipToEndOfLine(data, i);
+                    while (i < len && Character.isWhitespace(data[i])) {
+                        i++;
+                    }
+                }
+
                 if (i < len && data[i] == ',') {
                     i++;
                 }
@@ -512,17 +526,16 @@ public class TOMLFormat implements IFormatCodec {
             int len = data.length;
             char c = data[i];
 
-            // String
             if (c == '"' || c == '\'') {
                 i++;
                 while (i < len && data[i] != c) {
-                    if (data[i] == '\\' && i + 1 < len) {
-                        i++;
-                        element.append(unescapeChar(data[i]));
+                    // BASIC (") STRINGS DECODE ESCAPES; LITERAL (') STRINGS ARE VERBATIM
+                    if (c == '"' && data[i] == '\\' && i + 1 < len) {
+                        i = unescape(data, i + 1, element, true);
                     } else {
                         element.append(data[i]);
+                        i++;
                     }
-                    i++;
                 }
                 if (i >= len) {
                     throw new IOException("Unclosed string in array");
@@ -531,17 +544,19 @@ public class TOMLFormat implements IFormatCodec {
                 return i;
             }
 
-            // Literal (number, boolean, etc.)
+            // LITERAL (NUMBER, BOOLEAN, ETC.)
             while (i < len && data[i] != ',' && data[i] != ']' && data[i] != '\n' && data[i] != '#') {
                 element.append(data[i]);
                 i++;
             }
 
-            // Trim trailing whitespace
             while (!element.isEmpty() && Character.isWhitespace(element.charAt(element.length() - 1))) {
                 element.setLength(element.length() - 1);
             }
 
+            String normalized = normalizeLiteral(element.toString());
+            element.setLength(0);
+            element.append(normalized);
             return i;
         }
 
@@ -550,7 +565,6 @@ public class TOMLFormat implements IFormatCodec {
             int len = data.length;
 
             while (i < len) {
-                // Skip whitespace
                 while (i < len && Character.isWhitespace(data[i])) {
                     i++;
                 }
@@ -559,41 +573,32 @@ public class TOMLFormat implements IFormatCodec {
                     throw new IOException("Unclosed inline table");
                 }
 
-                // Check for end of table
                 if (data[i] == '}') {
                     i++;
                     return skipToEndOfLine(data, i);
                 }
 
-                // Parse key
                 StringBuilder subKey = new StringBuilder();
                 i = parseKey(data, i, subKey);
 
-                // Skip whitespace
                 while (i < len && Character.isWhitespace(data[i])) {
                     i++;
                 }
 
-                // Expect '='
                 if (i >= len || data[i] != '=') {
                     throw new IOException("Expected '=' in inline table");
                 }
 
-                // Skip whitespace
                 do {
                     i++;
                 } while (i < len && Character.isWhitespace(data[i]));
 
-                // Parse value
-                String fullKey = key + "." + subKey;
-                i = parseValue(data, i, fullKey);
+                i = parseValue(data, i, key + "." + subKey);
 
-                // Skip whitespace
                 while (i < len && Character.isWhitespace(data[i])) {
                     i++;
                 }
 
-                // Check for comma
                 if (i < len && data[i] == ',') {
                     i++;
                 }
@@ -612,9 +617,42 @@ public class TOMLFormat implements IFormatCodec {
                 i++;
             }
 
-            String literal = value.toString().trim();
-            values.put(key, literal);
+            values.put(key, normalizeLiteral(value.toString().trim()));
             return skipToEndOfLine(data, i);
+        }
+
+        private static final Pattern DECIMAL_NUMBER = Pattern.compile("[+-]?[0-9][0-9_]*(\\.[0-9_]+)?([eE][+-]?[0-9_]+)?");
+        private static final Pattern HEX_NUMBER = Pattern.compile("[+-]?0[xX][0-9a-fA-F_]+");
+        private static final Pattern OCTAL_NUMBER = Pattern.compile("[+-]?0[oO][0-7_]+");
+        private static final Pattern BINARY_NUMBER = Pattern.compile("[+-]?0[bB][01_]+");
+
+        // MAPS TOML NUMERIC SPELLINGS (nan/inf, 1_000, 0x/0o/0b) TO CODEC-PARSEABLE DECIMAL FORM
+        private static String normalizeLiteral(String literal) {
+            switch (literal) {
+                case "nan", "+nan", "-nan": return "NaN";
+                case "inf", "+inf": return "Infinity";
+                case "-inf": return "-Infinity";
+            }
+
+            String s = literal;
+            if (s.indexOf('_') >= 0 && DECIMAL_NUMBER.matcher(s).matches()) {
+                s = s.replace("_", "");
+            }
+            try {
+                if (HEX_NUMBER.matcher(s).matches()) return radix(s, 16);
+                if (OCTAL_NUMBER.matcher(s).matches()) return radix(s, 8);
+                if (BINARY_NUMBER.matcher(s).matches()) return radix(s, 2);
+            } catch (NumberFormatException e) {
+                return literal; // OUT-OF-RANGE PREFIXED INTEGER: KEEP THE RAW TOKEN
+            }
+            return s;
+        }
+
+        private static String radix(String s, int radix) {
+            boolean negative = s.charAt(0) == '-';
+            int prefix = (negative || s.charAt(0) == '+') ? 3 : 2;
+            long value = Long.parseLong(s.substring(prefix).replace("_", ""), radix);
+            return negative ? "-" + value : String.valueOf(value);
         }
 
         private int skipToEndOfLine(char[] data, int start) {
@@ -622,14 +660,13 @@ public class TOMLFormat implements IFormatCodec {
             int len = data.length;
             while (i < len && data[i] != '\n') {
                 if (data[i] == '#') {
-                    // Skip comment
                     while (i < len && data[i] != '\n') {
                         i++;
                     }
                     break;
                 }
                 if (!Character.isWhitespace(data[i])) {
-                    // Allow only whitespace and comments after value
+                    // ONLY WHITESPACE AND COMMENTS MAY FOLLOW A VALUE
                     break;
                 }
                 i++;
@@ -644,63 +681,8 @@ public class TOMLFormat implements IFormatCodec {
             return Character.isLetterOrDigit(c) || c == '_' || c == '"' || c == '\'';
         }
 
-        private char unescapeChar(char c) {
-            return switch (c) {
-                case 'n' -> '\n';
-                case 'r' -> '\r';
-                case 't' -> '\t';
-                case 'b' -> '\b';
-                case 'f' -> '\f';
-                case '\\' -> '\\';
-                case '"' -> '"';
-                case '\'' -> '\'';
-                default -> c;
-            };
-        }
-
         private String buildFullKey(String key) {
-            if (currentTable.isEmpty()) {
-                return key;
-            }
-            return currentTable + "." + key;
-        }
-
-        @Override
-        public String read(String fieldName) {
-            String key = Tools.concat("", (!group.isEmpty() ? "." : "") + fieldName, '.', group);
-            Object value = values.get(key);
-            if (value instanceof String s) {
-                return s;
-            }
-            return null;
-        }
-
-        @Override
-        public String[] readArray(String fieldName) {
-            String key = Tools.concat("", (!group.isEmpty() ? "." : "") + fieldName, '.', group);
-            Object value = values.get(key);
-            if (value instanceof String[] s) {
-                return s;
-            }
-            return null;
-        }
-
-        @Override
-        public void push(String group) {
-            this.group.push(group);
-        }
-
-        @Override
-        public void pop() {
-            if (!this.group.isEmpty()) {
-                this.group.pop();
-            }
-        }
-
-        @Override
-        public void close() {
-            this.values.clear();
-            this.group.clear();
+            return currentTable.isEmpty() ? key : currentTable + "." + key;
         }
     }
 }

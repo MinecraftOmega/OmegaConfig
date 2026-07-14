@@ -1,17 +1,25 @@
 package me.srrapero720.waterconfig.impl.formats;
 
 import me.srrapero720.waterconfig.WaterConfig;
-import me.srrapero720.waterconfig.Tools;
 import me.srrapero720.waterconfig.api.formats.IFormatReader;
 import me.srrapero720.waterconfig.api.formats.IFormatWriter;
-import me.srrapero720.waterconfig.api.formats.IFormatCodec;
 
-import java.io.*;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.Stack;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
 
-public class PROPFormat implements IFormatCodec {
+/**
+ * Properties format following {@code java.util.Properties} rules with the encoding
+ * pinned to UTF-8: {@code =}, {@code :} and whitespace separators, {@code #} and
+ * {@code !} comment lines, backslash line continuations and escapes in both directions.
+ */
+public class PROPFormat extends BaseFormat {
     public static final String FORMAT_KEY_DEF_SPLIT = "=";
     public static final String FORMAT_KEY_BREAKLINE = "\n";
     public static final String FORMAT_KEY_COMMENT_LINE = "#";
@@ -31,87 +39,152 @@ public class PROPFormat implements IFormatCodec {
         return new FormatWriter(filePath);
     }
 
-    private static class FormatReader implements IFormatReader {
-        private final LinkedHashMap<String, String> fields = new LinkedHashMap<>();
-        private final Stack<String> groups = new Stack<>();
-
+    private static class FormatReader extends BaseFormatReader {
         public FormatReader(Path filePath) throws IOException {
-            // TODO: safe maker
-            final BufferedReader in = new BufferedReader(new FileReader(filePath.toFile()));
+            char[] data = read(filePath);
+            final int len = data.length;
+            final StringBuilder key = new StringBuilder();
+            final StringBuilder value = new StringBuilder();
+            final List<String> pending = new ArrayList<>();
+            int i = 0;
 
-            String line;
-            while ((line = in.readLine()) != null) {
-                line = line.trim();
-                if (line.isEmpty() || line.startsWith(FORMAT_KEY_COMMENT_LINE)) {
-                    continue; // Skip empty lines and comments
+            while (i < len) {
+                char c = data[i];
+
+                // SKIP BLANK SPACE BETWEEN LOGICAL LINES
+                if (c == '\n' || c == '\r' || c == ' ' || c == '\t' || c == '\f') {
+                    i++;
+                    continue;
                 }
 
-                String[] parts = line.split(FORMAT_KEY_DEF_SPLIT, 2);
-                if (parts.length == 2) {
-                    String key = parts[0].trim();
-                    String value = parts[1].trim();
-                    fields.put(key, value);
+                // COMMENT LINES START WITH # OR !; TEXT ATTACHES TO THE NEXT ENTRY
+                if (c == '#' || c == '!') {
+                    int start = i + 1;
+                    while (i < len && data[i] != '\n') i++;
+                    pending.add(new String(data, start, i - start).trim());
+                    continue;
+                }
+
+                key.setLength(0);
+                value.setLength(0);
+
+                // KEY: UP TO THE FIRST UNESCAPED SEPARATOR (=, : OR WHITESPACE)
+                boolean assigned = false;
+                while (i < len) {
+                    c = data[i];
+                    if (c == '\n' || c == '\r') break;
+                    if (c == '\\') {
+                        i = unescape(data, i, key);
+                        continue;
+                    }
+                    if (c == '=' || c == ':') {
+                        assigned = true;
+                        i++;
+                        break;
+                    }
+                    if (c == ' ' || c == '\t' || c == '\f') {
+                        i++;
+                        break;
+                    }
+                    key.append(c);
+                    i++;
+                }
+
+                // AFTER A WHITESPACE SEPARATOR AN OPTIONAL SINGLE = OR : MAY FOLLOW
+                if (!assigned) {
+                    while (i < len && (data[i] == ' ' || data[i] == '\t' || data[i] == '\f')) i++;
+                    if (i < len && (data[i] == '=' || data[i] == ':')) i++;
+                }
+
+                // WHITESPACE BEFORE THE VALUE IS NOT PART OF IT
+                while (i < len && (data[i] == ' ' || data[i] == '\t' || data[i] == '\f')) i++;
+
+                // VALUE: REST OF THE LOGICAL LINE, TRAILING WHITESPACE PRESERVED
+                while (i < len) {
+                    c = data[i];
+                    if (c == '\n' || c == '\r') break;
+                    if (c == '\\') {
+                        i = unescape(data, i, value);
+                        continue;
+                    }
+                    value.append(c);
+                    i++;
+                }
+
+                this.values.put(key.toString(), value.toString());
+                if (!pending.isEmpty()) {
+                    this.comments.put(key.toString(), List.copyOf(pending));
+                    pending.clear();
                 }
             }
-
-            in.close();
-        }
-
-        @Override
-        public String read(String fieldName) {
-            // CONCAT THE GROUPS
-            StringBuilder group = new StringBuilder();
-            for (String g: this.groups) {
-                group.append(g).append(FORMAT_KEY_GROUP_SPLIT);
-            }
-            return fields.get(group.append(fieldName).toString());
         }
 
         @Override
         public String[] readArray(String fieldName) {
-            // CONCAT THE GROUPS
-            StringBuilder group = new StringBuilder();
-            for (String g: this.groups) {
-                group.append(g).append(FORMAT_KEY_GROUP_SPLIT);
+            String value = this.read(fieldName);
+            // MISSING OR NON-ARRAY KEYS YIELD NULL, NEVER A CRASH
+            if (value == null || value.length() < 2 || value.charAt(0) != '[' || value.charAt(value.length() - 1) != ']') {
+                return null;
             }
-            String value = fields.get(group.append(fieldName).toString());
-            if (value.charAt(0) == '[' && value.charAt(value.length() - 1) == ']') {
-                value = value.substring(1, value.length() - 1);
-                String[] parts = value.trim().split(",");
-                for (int i = 0; i < parts.length; i++) {
-                    parts[i] = parts[i].trim();
+
+            value = value.substring(1, value.length() - 1).trim();
+            if (value.isEmpty()) {
+                return new String[0];
+            }
+
+            // SPLIT ON UNESCAPED COMMAS, THEN DECODE THE ELEMENT-LAYER \, AND \\ ESCAPES
+            List<String> parts = new ArrayList<>();
+            StringBuilder element = new StringBuilder();
+            for (int i = 0; i < value.length(); i++) {
+                char c = value.charAt(i);
+                if (c == '\\' && i + 1 < value.length()) {
+                    element.append(value.charAt(++i));
+                    continue;
                 }
-                return parts;
+                if (c == ',') {
+                    parts.add(decodeElement(element));
+                    element.setLength(0);
+                    continue;
+                }
+                element.append(c);
             }
-
-            return null;
+            parts.add(decodeElement(element));
+            return parts.toArray(new String[0]);
         }
 
-        @Override
-        public void push(String group) {
-            this.groups.push(group);
+        // TRIMS THE ", " JOIN PADDING; ESCAPED CHARS WERE ALREADY UNWRAPPED DURING THE SPLIT
+        private static String decodeElement(StringBuilder element) {
+            int start = 0, end = element.length();
+            while (start < end && element.charAt(start) == ' ') start++;
+            while (end > start && element.charAt(end - 1) == ' ') end--;
+            return element.substring(start, end);
         }
 
-        @Override
-        public void pop() {
-            this.groups.pop();
-        }
-
-        @Override
-        public void close() {
-            this.fields.clear();
+        // DECODES THE ESCAPE AT data[i] (A BACKSLASH); BACKSLASH-NEWLINE IS A LINE CONTINUATION
+        private static int unescape(char[] data, int i, StringBuilder out) {
+            int len = data.length;
+            if (i + 1 >= len) {
+                return i + 1; // LONE TRAILING BACKSLASH AT EOF: DROPPED
+            }
+            char c = data[i + 1];
+            if (c == '\n' || c == '\r') {
+                // LINE CONTINUATION: DROP THE BREAK AND THE CONTINUATION LINE'S LEADING WHITESPACE
+                i += (c == '\r' && i + 2 < len && data[i + 2] == '\n') ? 3 : 2;
+                while (i < len && (data[i] == ' ' || data[i] == '\t' || data[i] == '\f')) i++;
+                return i;
+            }
+            return BaseFormat.unescape(data, i + 1, out, false);
         }
     }
 
     private static class FormatWriter implements IFormatWriter {
-        private final Stack<String> groups = new Stack<>();
+        private final Deque<String> groups = new ArrayDeque<>();
         private final BufferedWriter out;
         private final StringBuilder data = new StringBuilder();
         private boolean rootPushed = false;
 
         public FormatWriter(Path filePath) throws IOException {
-            // TODO: safe maker
-            this.out = new BufferedWriter(new FileWriter(filePath.toFile()));
+            this.out = Files.newBufferedWriter(filePath, StandardCharsets.UTF_8);
         }
 
         @Override
@@ -123,39 +196,42 @@ public class PROPFormat implements IFormatCodec {
 
         @Override
         public void write(String fieldName, String value, Class<?> type, Class<?> subType) {
-            this.data.append(Tools.concat("", "", FORMAT_KEY_GROUP_SPLIT, groups))
-                    .append(groups.isEmpty() ? fieldName : FORMAT_KEY_GROUP_SPLIT + fieldName)
-                    .append(FORMAT_KEY_DEF_SPLIT)
-                    .append(value)
-                    .append(FORMAT_KEY_BREAKLINE);
+            this.writeKey(fieldName);
+            this.data.append(escapeValue(value)).append(FORMAT_KEY_BREAKLINE);
         }
 
         @Override
         public void write(String fieldName, String[] values, Class<?> type, Class<?> subType) {
-            String arrayString = "[" + String.join(", ", values) + "]";
-            this.data.append(Tools.concat("", "", FORMAT_KEY_GROUP_SPLIT, groups))
-                    .append(groups.isEmpty() ? fieldName : FORMAT_KEY_GROUP_SPLIT + fieldName)
-                    .append(FORMAT_KEY_DEF_SPLIT)
-                    .append(arrayString)
-                    .append(FORMAT_KEY_BREAKLINE);
+            // ELEMENT LAYER: ESCAPE BACKSLASHES AND THE COMMA DELIMITER SO ELEMENTS ROUND-TRIP
+            StringBuilder array = new StringBuilder(values.length * 12 + 2);
+            array.append('[');
+            for (int i = 0; i < values.length; i++) {
+                if (i > 0) {
+                    array.append(", ");
+                }
+                array.append(values[i].replace("\\", "\\\\").replace(",", "\\,"));
+            }
+            array.append(']');
+
+            this.writeKey(fieldName);
+            this.data.append(escapeValue(array.toString())).append(FORMAT_KEY_BREAKLINE);
         }
 
         @Override
-        // TODO: implement a check for re-pushing a wrote group
         public void push(String groupName) {
             if (!rootPushed) {
                 rootPushed = true;
-                return; // Properties root has no group prefix
+                return; // PROPERTIES ROOT HAS NO GROUP PREFIX
             }
-            this.groups.push(groupName);
+            this.groups.addLast(groupName);
             this.data.append(FORMAT_KEY_BREAKLINE);
-            this.write("Begin of group " + Tools.concat("", "", FORMAT_KEY_GROUP_SPLIT, groups));
+            this.write("Begin of group " + String.join(".", this.groups));
         }
 
         @Override
         public void pop() {
-            if (this.groups.isEmpty()) return; // root pop
-            this.groups.pop();
+            if (this.groups.isEmpty()) return; // ROOT POP
+            this.groups.pollLast();
             this.data.append(FORMAT_KEY_BREAKLINE.repeat(2));
         }
 
@@ -167,6 +243,60 @@ public class PROPFormat implements IFormatCodec {
             }
             this.out.write(data);
             this.out.close();
+        }
+
+        // EMITS THE DOTTED GROUP PREFIX, THE ESCAPED KEY AND THE SEPARATOR
+        private void writeKey(String fieldName) {
+            for (String g: this.groups) {
+                this.data.append(escapeKey(g)).append(FORMAT_KEY_GROUP_SPLIT);
+            }
+            this.data.append(escapeKey(fieldName)).append(FORMAT_KEY_DEF_SPLIT);
+        }
+
+        // KEYS ESCAPE SEPARATORS, WHITESPACE, COMMENT MARKERS AND BACKSLASHES
+        private static String escapeKey(String s) {
+            StringBuilder out = null;
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                String escaped = switch (c) {
+                    case '\\', '=', ':', ' ', '#', '!' -> "\\" + c;
+                    case '\n' -> "\\n";
+                    case '\r' -> "\\r";
+                    case '\t' -> "\\t";
+                    case '\f' -> "\\f";
+                    default -> null;
+                };
+                if (escaped != null && out == null) {
+                    out = new StringBuilder(s.length() + 8).append(s, 0, i);
+                }
+                if (out != null) {
+                    out.append(escaped != null ? escaped : String.valueOf(c));
+                }
+            }
+            return out != null ? out.toString() : s;
+        }
+
+        // VALUES ESCAPE BACKSLASHES, LINE BREAKS AND A LEADING WHITESPACE CHAR
+        private static String escapeValue(String s) {
+            StringBuilder out = null;
+            for (int i = 0; i < s.length(); i++) {
+                char c = s.charAt(i);
+                String escaped = switch (c) {
+                    case '\\' -> "\\\\";
+                    case '\n' -> "\\n";
+                    case '\r' -> "\\r";
+                    case '\f' -> "\\f";
+                    case ' ', '\t' -> (i == 0) ? (c == ' ' ? "\\ " : "\\t") : null;
+                    default -> null;
+                };
+                if (escaped != null && out == null) {
+                    out = new StringBuilder(s.length() + 8).append(s, 0, i);
+                }
+                if (out != null) {
+                    out.append(escaped != null ? escaped : String.valueOf(c));
+                }
+            }
+            return out != null ? out.toString() : s;
         }
     }
 }

@@ -79,8 +79,13 @@ public final class MathEvaluator {
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             if (c == '+' || c == '*' || c == '/' || c == '^' || c == '~') return true;
-            // '-' is an operator only when preceded by a digit (not a leading negative sign)
-            if (c == '-' && i > 0 && (Character.isDigit(value.charAt(i - 1)) || value.charAt(i - 1) == '.')) return true;
+            // '-' IS AN OPERATOR ONLY WHEN A DIGIT PRECEDES IT (IGNORING WHITESPACE),
+            // OTHERWISE IT IS A LEADING NEGATIVE SIGN
+            if (c == '-' && i > 0) {
+                int j = i - 1;
+                while (j >= 0 && Character.isWhitespace(value.charAt(j))) j--;
+                if (j >= 0 && (Character.isDigit(value.charAt(j)) || value.charAt(j) == '.')) return true;
+            }
         }
         return false;
     }
