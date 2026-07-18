@@ -1,3 +1,9 @@
+# 📦 UPDATE 1.0.0.2 - BETA
+- ✨Implemented `Spec#old` and `SpecBuilder#old(String)`: when the current-format file is missing.
+  - The same spec file is searched in the previous format, its settings recovered, validated and migrated into the current format.
+  - The old file is deleted once the migration is persisted, and only ignored when the current-format file already exists.
+- 🛠 Field aliases now also resolve from the file root, so restructured specs recover values from flat old files
+
 # 📦 UPDATE 1.0.0.1 - BETA
 - ✨Added codecs: `BigDecimal`, `BigInteger`, `java.nio.charset.Charset`, `java.awt.Color`, `PatternCodec`, `URLCodec`
 - ✨Added ``java.time`` codecs: `Duration`, `Instant`, `LocalDate`, `LocalDateTime`, `Locale`, `OffsetDateTime`, `Period`, `ZoneDateTime`, `ZoneId`
