@@ -63,6 +63,12 @@ public final class ConfigSpec extends ConfigGroup {
     private final String fileSuffix;
     private final Path filePath;
     private final int backups;
+    // PREVIOUS-FORMAT RECOVERY SOURCE, NULL WHEN THE SPEC HAS NOTHING OLD TO RECOVER FROM
+    private IFormatCodec oldFormat;
+    private Path oldPath;
+    // TRUE WHILE THE IN-MEMORY STATE DESCENDS FROM THE OLD FILE: THE NEXT SUCCESSFUL SAVE
+    // COMPLETES THE MIGRATION AND DELETES THE OLD FILE (GUARDED BY ioLock)
+    private boolean oldCleanup;
     // GUARDS FILE IO AND THE {dirty, reload, dirtyFields} TRANSITIONS AGAINST CONCURRENT SAVES/LOADS
     final Object ioLock = new Object();
     volatile boolean dirty;
@@ -109,6 +115,14 @@ public final class ConfigSpec extends ConfigGroup {
 
     IFormatCodec format() {
         return this.format;
+    }
+
+    IFormatCodec oldFormat() {
+        return this.oldFormat;
+    }
+
+    Path oldPath() {
+        return this.oldPath;
     }
 
     String fileSuffix() {
@@ -184,12 +198,22 @@ public final class ConfigSpec extends ConfigGroup {
     // TODO: must return a boolean or just throw instead?
     boolean load() throws IOException {
         synchronized (this.ioLock) {
-            if (!this.filePath.toFile().exists()) {
-                return false;
+            // OLD-FORMAT RECOVERY: WHEN THE CURRENT-FORMAT FILE IS MISSING, THE SAME SPEC FILE IS
+            // SEARCHED WITH THE OLD FORMAT EXTENSION AND ITS SETTINGS RECOVERED (OLD FILE UNTOUCHED)
+            IFormatCodec source = this.format;
+            Path sourcePath = this.filePath;
+            boolean recovered = false;
+            if (!Files.exists(sourcePath)) {
+                if (this.oldFormat == null || !Files.exists(this.oldPath)) {
+                    return false;
+                }
+                source = this.oldFormat;
+                sourcePath = this.oldPath;
+                recovered = true;
             }
             // REPAIR MODE: THE SPEC VALIDATES EVERY RECOVERED VALUE, SO FORMAT ERRORS
             // BECOME LOGGED RESYNC POINTS INSTEAD OF ABORTING THE WHOLE LOAD
-            try (IFormatReader reader = this.format.createReader(this.filePath, IFormatCodec.ParseMode.REPAIR)) {
+            try (IFormatReader reader = source.createReader(sourcePath, IFormatCodec.ParseMode.REPAIR)) {
                 this.load(this, reader);
 
                 // UNKNOWN FILE KEYS (ALIASES INCLUDED) JOIN THE READER'S RECOVERY REPORT
@@ -205,6 +229,14 @@ public final class ConfigSpec extends ConfigGroup {
                 }
             }
             this.reload = false;
+            // RECOVERED SETTINGS ONLY EXIST IN MEMORY: STAY DIRTY, KEEP LOADED UNPUBLISHED AND
+            // REPORT THE CURRENT-FORMAT FILE AS MISSING SO THE CALLER PERSISTS THE MIGRATION
+            if (recovered) {
+                this.dirty = true;
+                this.oldCleanup = true;
+                return false;
+            }
+            this.oldCleanup = false; // A CURRENT-FORMAT LOAD SUPERSEDES ANY PENDING MIGRATION CLEANUP
             this.status = Status.LOADED;
             return true;
         }
@@ -220,8 +252,21 @@ public final class ConfigSpec extends ConfigGroup {
             known.add(prefix + field.name());
             for (String alias : field.aliases()) {
                 known.add(prefix + alias);
+                known.add(alias); // ALIASES ALSO RESOLVE FROM THE FILE ROOT
             }
         }
+    }
+
+    // ALIAS LOOKUP: TRIES THE FIELD'S GROUP FIRST, THEN THE ALIAS AS AN ABSOLUTE KEY FROM THE
+    // FILE ROOT, SO RESTRUCTURED SPECS STILL PICK VALUES OUT OF FLAT (PRE-GROUPING) OLD FILES
+    private static String readAlias(IFormatReader reader, String alias) {
+        String value = reader.read(alias);
+        return value != null ? value : (reader.entries().get(alias) instanceof String s ? s : null);
+    }
+
+    private static String[] readAliasArray(IFormatReader reader, String alias) {
+        String[] values = reader.readArray(alias);
+        return values != null ? values : (reader.entries().get(alias) instanceof String[] s ? s : null);
     }
 
     private void load(ConfigGroup group, IFormatReader reader) {
@@ -250,13 +295,13 @@ public final class ConfigSpec extends ConfigGroup {
                     String[] values = reader.readArray(field.name());
                     // RENAMED FIELDS PICK UP VALUES FROM THEIR FORMER NAMES
                     for (int a = 0; values == null && a < field.aliases().length; a++) {
-                        values = reader.readArray(field.aliases()[a]);
+                        values = readAliasArray(reader, field.aliases()[a]);
                     }
                     if (values == null && collectionField.stringify) {
                         // STRINGIFY SUGAR: THE COLLECTION WAS SAVED AS ONE COMMA-SEPARATED STRING
                         String raw = reader.read(field.name());
                         for (int a = 0; raw == null && a < field.aliases().length; a++) {
-                            raw = reader.read(field.aliases()[a]);
+                            raw = readAlias(reader, field.aliases()[a]);
                         }
                         if (raw != null) {
                             if (raw.isBlank()) {
@@ -292,7 +337,7 @@ public final class ConfigSpec extends ConfigGroup {
                 String value = reader.read(field.name());
                 // RENAMED FIELDS PICK UP VALUES FROM THEIR FORMER NAMES
                 for (int a = 0; value == null && a < field.aliases().length; a++) {
-                    value = reader.read(field.aliases()[a]);
+                    value = readAlias(reader, field.aliases()[a]);
                 }
                 if (value == null) {
                     continue;
@@ -348,6 +393,17 @@ public final class ConfigSpec extends ConfigGroup {
                     }
                 }
                 Files.write(backupPath(1), previous);
+            }
+
+            // MIGRATION CLEANUP: THE OLD-FORMAT FILE IS DELETED ONLY ONCE ITS SETTINGS ARE
+            // SAFELY PERSISTED IN THE CURRENT FORMAT; A FAILED DELETE IS RESIDUE, NOT A SAVE ERROR
+            if (this.oldCleanup) {
+                this.oldCleanup = false;
+                try {
+                    Files.deleteIfExists(this.oldPath);
+                } catch (IOException e) {
+                    System.err.println("[WaterConfig] Failed to delete old config file '" + this.oldPath + "': " + e.getMessage());
+                }
             }
         }
     }
@@ -494,6 +550,35 @@ public final class ConfigSpec extends ConfigGroup {
         SpecBuilder(String name, IFormatCodec format, Path path, int backups) {
             this.spec = new ConfigSpec(name, format, "", path, backups);
             this.active = this.spec;
+        }
+
+        /**
+         * Sets the previous format to recover settings from: when the current-format file is
+         * missing on load, the same spec file with the old format extension is searched and its
+         * settings recovered, persisted in the current format and the old file deleted. When the
+         * current-format file already exists the old file is only ignored.
+         *
+         * @param format the previous format id; empty or null means nothing old to recover
+         * @throws IllegalArgumentException when the format is unknown or equals the spec format
+         */
+        public SpecBuilder old(String format) {
+            if (format == null || format.isEmpty()) {
+                return this;
+            }
+            IFormatCodec old = FORMATS.get(format);
+            if (old == null) {
+                throw new IllegalArgumentException("Unknown old format '" + format + "'");
+            }
+            if (old.id().equals(this.spec.format().id())) {
+                throw new IllegalArgumentException("Old format cannot be the spec format itself");
+            }
+            // SAME FILE NAME NEXT TO THE CURRENT ONE, WITH THE OLD FORMAT EXTENSION
+            String file = this.spec.path().getFileName().toString();
+            String extension = this.spec.format().extension();
+            String stem = file.endsWith(extension) ? file.substring(0, file.length() - extension.length()) : file;
+            this.spec.oldFormat = old;
+            this.spec.oldPath = this.spec.path().resolveSibling(stem + old.extension());
+            return this;
         }
 
         PathFieldBuilder definePath(String name, Field field, Object context) {

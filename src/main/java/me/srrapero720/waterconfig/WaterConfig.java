@@ -208,7 +208,7 @@ public class WaterConfig {
 
         // RETRIEVE ANNOTATION
         final Spec spec = Tools.specOf(clazz);
-        ConfigSpec.SpecBuilder builder = new ConfigSpec.SpecBuilder(spec.value(), FORMATS.get(spec.format()), spec.suffix(), spec.backups());
+        ConfigSpec.SpecBuilder builder = new ConfigSpec.SpecBuilder(spec.value(), FORMATS.get(spec.format()), spec.suffix(), spec.backups()).old(spec.old());
 
         // ITERATE ALL CLASES
         register$iterateClass(clazz, clazz, builder, true);
@@ -228,7 +228,7 @@ public class WaterConfig {
         final Spec spec = Tools.specOf(specClass);
 
         // BUILDER
-        ConfigSpec.SpecBuilder builder = new ConfigSpec.SpecBuilder(spec.value(), FORMATS.get(spec.format()), spec.suffix(), spec.backups());
+        ConfigSpec.SpecBuilder builder = new ConfigSpec.SpecBuilder(spec.value(), FORMATS.get(spec.format()), spec.suffix(), spec.backups()).old(spec.old());
 
         // ITERATE ALL CLASES
         register$iterateClass(instance, specClass, builder, false);

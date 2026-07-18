@@ -57,6 +57,20 @@ public @interface Spec {
     String format() default WaterConfig.FORMAT_PROPERTIES;
 
     /**
+     * Previous config format to recover the previous settings from.
+     *
+     * <p>When the {@link #format()} file is missing on load, the same spec file is searched
+     * with the old format extension; if it exists its settings are recovered, validated and
+     * saved in the current format, then the old file is deleted to keep the config storage
+     * clean. When the current-format file already exists the old file is only ignored.</p>
+     *
+     * <p>Value is ignored on sub-config classes or nested config classes</p>
+     *
+     * @return the previous format id; empty (nothing old to recover) by default
+     */
+    String old() default "";
+
+    /**
      * Disables static declaration on this config spec, useful when you want to use the spec on multiple fields
      * @return false by default
      */
